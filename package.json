@@ -1,0 +1,22 @@
+{
+  "name": "lumen-reader",
+  "productName": "Lumen 流明阅读",
+  "version": "1.0.4",
+  "description": "A beautiful local-first English reading companion with instant lookup, AI context analysis and spaced-repetition vocabulary.",
+  "main": "src/main/main.js",
+  "author": "Lumen",
+  "license": "MIT",
+  "scripts": {
+    "start": "node scripts/launch.js",
+    "dev": "node scripts/launch.js --dev",
+    "test": "node --test tests/*.test.js",
+    "screenshots": "node scripts/launch.js --screenshots",
+    "pack": "electron-builder --win --x64 --dir",
+    "dist": "electron-builder --win --x64 portable",
+    "selftest": "node scripts/launch.js --selftest"
+  },
+  "devDependencies": {
+    "electron": "^45.1.0",
+    "electron-builder": "^26.18.0"
+  }
+}

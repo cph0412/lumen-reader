@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="paper">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'">
+  <meta name="color-scheme" content="light dark">
+  <title>Lumen · 划词翻译</title>
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/quick.css">
+</head>
+<body>
+  <div class="quick-shell">
+    <div class="quick" role="dialog" aria-label="划词翻译">
+      <header class="quick-head">
+        <div class="quick-brand">
+          <span class="quick-logo" aria-hidden="true">L</span>
+          <div class="quick-brand-copy">
+            <p class="quick-brand-name">Lumen</p>
+            <p class="quick-brand-sub">流明阅读</p>
+          </div>
+        </div>
+        <div class="quick-head-right">
+          <span class="quick-head-title">划词翻译</span>
+          <button class="quick-close" id="q-close" type="button" aria-label="关闭浮窗" title="关闭">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="quick-capture" aria-label="选中的文本">
+        <div class="quick-capture-head">
+          <span class="quick-capture-label">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5V5.5z"/><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H19v3H6.5"/></svg>
+            选中内容
+          </span>
+          <div class="quick-capture-tools">
+            <button class="quick-tool" id="q-speak" type="button" aria-label="朗读选中文本" title="朗读">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 9.5a3.5 3.5 0 0 1 0 5"/><path d="M18.5 7a7 7 0 0 1 0 10"/></svg>
+            </button>
+            <button class="quick-expand" id="q-expand" type="button" hidden>展开</button>
+          </div>
+        </div>
+        <p class="quick-text" id="q-text"></p>
+        <span class="quick-source" id="q-source" hidden></span>
+      </section>
+
+      <main class="quick-body" id="q-body" aria-live="polite"></main>
+
+      <footer class="quick-foot">
+        <button class="btn primary" id="q-save" type="button" disabled>
+          <span id="q-save-icon">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h10v16l-5-3.5L7 20V4z"/></svg>
+          </span>
+          <span id="q-save-label">收藏生词</span>
+        </button>
+        <button class="btn ghost" id="q-open" type="button">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M19 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h4"/></svg>
+          <span>打开主程序</span>
+        </button>
+        <button class="btn ghost quick-dismiss" id="q-hide" type="button" aria-label="关闭浮窗" title="关闭">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+        <p class="quick-save-note" id="q-save-note"></p>
+      </footer>
+    </div>
+  </div>
+  <script type="module" src="js/quick.js"></script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+[
+  {
+    "file": "alice-in-wonderland.txt",
+    "title": "Alice's Adventures in Wonderland",
+    "author": "Lewis Carroll",
+    "description": "掉进兔子洞之后，一切都开始不合理起来。最经典的英文原版童话之一，适合从 B1 开始精读。",
+    "palette": 1,
+    "level": "B1",
+    "year": 1865
+  },
+  {
+    "file": "the-time-machine.txt",
+    "title": "The Time Machine",
+    "author": "H. G. Wells",
+    "description": "时间旅行者的 80 万年后见闻。短小、悬念强，是进入英语科幻阅读的绝佳入口。",
+    "palette": 4,
+    "level": "B2",
+    "year": 1895
+  },
+  {
+    "file": "frankenstein.txt",
+    "title": "Frankenstein",
+    "author": "Mary Wollstonecraft Shelley",
+    "description": "一个关于创造、孤独与责任的哥特故事。长句多，适合想提升文学阅读能力的读者。",
+    "palette": 5,
+    "level": "C1",
+    "year": 1818
+  },
+  {
+    "file": "sherlock-holmes.txt",
+    "title": "The Adventures of Sherlock Holmes",
+    "author": "Arthur Conan Doyle",
+    "description": "十二个独立探案故事，情节驱动、对话密集，通勤路上的最佳英文读物。",
+    "palette": 3,
+    "level": "B1",
+    "year": 1892
+  },
+  {
+    "file": "the-yellow-wallpaper.txt",
+    "title": "The Yellow Wallpaper",
+    "author": "Charlotte Perkins Gilman",
+    "description": "一篇被重新发现的女性主义短篇经典。篇幅短，语气与意象值得细读。",
+    "palette": 2,
+    "level": "B2",
+    "year": 1892
+  },
+  {
+    "file": "the-gift-of-the-magi.txt",
+    "title": "The Gift of the Magi",
+    "author": "O. Henry",
+    "description": "欧·亨利最著名的短篇：关于爱、牺牲和最好的礼物。20 分钟就能读完。",
+    "palette": 0,
+    "level": "B1",
+    "year": 1905
+  }
+]

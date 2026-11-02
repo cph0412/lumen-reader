@@ -1,0 +1,35 @@
+appId: com.lumen.reader
+productName: Lumen
+copyright: Copyright © 2026 Lumen
+directories:
+  output: release
+  buildResources: build
+electronDist: node_modules/electron/dist
+disableAsarIntegrity: true
+npmRebuild: false
+files:
+  - src/**/*
+  - package.json
+  - "!**/*.map"
+extraResources:
+  - from: resources/samples
+    to: samples
+  - from: resources/SelectionGrabber.exe
+    to: SelectionGrabber.exe
+  - from: resources/tray.png
+    to: tray.png
+  - from: resources/icon.png
+    to: icon.png
+win:
+  icon: build/icon.ico
+  signAndEditExecutable: false
+  target:
+    - target: portable
+      arch:
+        - x64
+  artifactName: Lumen-${version}-portable.${ext}
+portable:
+  artifactName: Lumen-${version}-portable.${ext}
+  requestExecutionLevel: user
+  unpackDirName: Lumen
+compression: maximum
