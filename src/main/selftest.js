@@ -44,6 +44,11 @@ function mockAnalysis() {
       { en: 'The next day would be Christmas.', zh: '第二天就是圣诞节了。' }
     ],
     alternatives: ['She counted every cent.', 'There was nothing left to do but count again.'],
+    roots: [
+      { text: 'count', type: 'root', meaning: '计算' }
+    ],
+    mnemonic: '联想：数硬币时一枚一枚地数，就像把注意力“count”住。',
+    associations: ['count on', 'count down', 'countless'],
     level: 'B1'
   };
 }
@@ -64,6 +69,18 @@ function startMockAI() {
             const payload = JSON.parse(body || '{}');
             const messages = Array.isArray(payload.messages) ? payload.messages : [];
             const last = messages[messages.length - 1] || {};
+            const userContent = last.content ? String(last.content) : '';
+            if (/^单词：/.test(userContent) || /中文释义：/.test(userContent)) {
+              res.writeHead(200, { 'content-type': 'application/json' });
+              res.end(JSON.stringify({
+                choices: [{ message: { role: 'assistant', content: JSON.stringify({
+                  mnemonic: '把 curious 想成“care + us”：因为在意，所以好奇。',
+                  associations: ['curiosity', 'curious about', 'curiously'],
+                  wordFamily: ['curiosity', 'curiously', 'incurious']
+                }) } }]
+              }));
+              return;
+            }
             const analysis = mockAnalysis();
             if (last.content && /butter/i.test(String(last.content))) {
               analysis.translation = '这是最好的黄油，你知道的。';
@@ -109,6 +126,20 @@ async function runSelfTest({ windows, mainWindow, services, hotkey }) {
     });
     const aiSettings = services.settings.get().ai;
     record('settings: local AI available without key', aiSettings.available === true && aiSettings.local === true, JSON.stringify({ hasApiKey: aiSettings.hasApiKey, local: aiSettings.local, available: aiSettings.available }));
+
+    try {
+      const lex = services.lexicon.analyze('unhappy');
+      record('lexicon: local root/affix analysis', Boolean(lex && Array.isArray(lex.parts) && lex.parts.length > 0), JSON.stringify(lex).slice(0, 220));
+      const mnemonic = await services.lexicon.mnemonic({ word: 'curious', translation: '好奇的' });
+      record('lexicon: AI mnemonic', Boolean(mnemonic && mnemonic.mnemonic && mnemonic.mnemonic.length > 0), JSON.stringify(mnemonic).slice(0, 220));
+      const added = services.vocab.add({ word: 'unhappy', translation: '不快乐的', context: 'She felt unhappy.', source: { bookTitle: 'Test' } });
+      const reviewed = services.vocab.review(added.word.id, 'good');
+      const schedule = services.vocab.schedule();
+      record('vocab: Ebbinghaus scheduling', Boolean(reviewed.memory) && reviewed.memory.stage === 1 && Date.parse(reviewed.memory.due) > Date.now() && schedule.intervals.length === 11, JSON.stringify({ stage: reviewed.memory && reviewed.memory.stage, due: reviewed.memory && reviewed.memory.due, intervals: schedule.intervals.length }));
+      services.vocab.remove(added.word.id);
+    } catch (err) {
+      record('lexicon/vocab enrichment', false, err.message);
+    }
 
     win.show();
     win.setContentSize(1440, 900);
@@ -157,6 +188,7 @@ async function runSelfTest({ windows, mainWindow, services, hotkey }) {
     const aiCard = await waitFor(win, "Boolean(document.querySelector('#lookup .lookup-ai .ai-block'))", 12000);
     const aiText = await win.webContents.executeJavaScript("document.querySelector('#lookup .lookup-ai')?.textContent.trim() || ''");
     record('lookup: AI context analysis', Boolean(aiCard), aiText);
+    await sleep(1400);
     try {
       const aiShot = await win.webContents.capturePage();
       fs.mkdirSync(path.join(process.cwd(), '.tmp'), { recursive: true });
@@ -263,8 +295,24 @@ async function runSelfTest({ windows, mainWindow, services, hotkey }) {
       record('library: reading progress updates after return', false, err.message);
     }
 
+    try {
+      await waitForRoute(win, '#/vocab');
+      const drawerOpened = await win.webContents.executeJavaScript(`(() => {
+        const row = document.querySelector('.vocab-row');
+        if (!row) return false;
+        row.click();
+        return true;
+      })()`);
+      const drawerReady = await waitFor(win, "Boolean(document.querySelector('#vocab-drawer.is-open .vd-memory') && document.querySelector('#vd-lexicon'))", 6000);
+      record('vocab: memory + roots drawer', Boolean(drawerOpened) && Boolean(drawerReady));
+    } catch (err) {
+      record('vocab: memory + roots drawer', false, err.message);
+    }
+
     const reviewRoute = await waitForRoute(win, '#/review');
     record('review: route renders', Boolean(reviewRoute));
+    const curveReady = await waitFor(win, "Boolean(document.querySelector('#memory-card .memory-chart'))", 5000);
+    record('review: Ebbinghaus curve renders', Boolean(curveReady));
     const revealed = await win.webContents.executeJavaScript(`(() => { const btn = document.querySelector('#review-reveal'); if (!btn) return false; btn.click(); return true; })()`);
     await sleep(500);
     const rated = await win.webContents.executeJavaScript(`(() => { const btn = document.querySelector('[data-rating="good"]'); if (!btn) return false; btn.click(); return true; })()`);
@@ -273,6 +321,11 @@ async function runSelfTest({ windows, mainWindow, services, hotkey }) {
 
     const settingsRoute = await waitForRoute(win, '#/settings');
     record('settings: route renders', Boolean(settingsRoute));
+    const dictionaryCard = await win.webContents.executeJavaScript(`Boolean(
+      document.querySelector('#set-oxford-app-id') &&
+      Array.from(document.querySelectorAll('.settings-card')).some((el) => (el.getAttribute('aria-label') || '') === '词典')
+    )`);
+    record('settings: dictionary + Oxford credentials card', Boolean(dictionaryCard));
     const darkClicked = await win.webContents.executeJavaScript(`(() => { const el = document.querySelector('[data-theme-value="dark"]'); if (!el) return false; el.click(); return true; })()`);
     await sleep(900);
     const darkApplied = await win.webContents.executeJavaScript("document.documentElement.dataset.theme === 'dark'");

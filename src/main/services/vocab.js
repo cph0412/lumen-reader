@@ -14,7 +14,13 @@ const RATINGS = ['again', 'hard', 'good', 'easy'];
 const MASTERY_MAX = 5;
 const EASE_MIN = 1.3;
 const EASE_MAX = 3.5;
-const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+
+// 艾宾浩斯阶段（小时）：5 分钟、30 分钟、12 小时、1 天、2 天、4 天、7 天、15 天、30 天、60 天、120 天
+const EBBINGHAUS_INTERVALS = [1 / 12, 0.5, 12, 24, 48, 96, 168, 360, 720, 1440, 2880];
+const EBBINGHAUS_LABELS = ['5分钟', '30分钟', '12小时', '1天', '2天', '4天', '7天', '15天', '30天', '60天', '120天'];
+const MAX_STAGE = EBBINGHAUS_INTERVALS.length - 1;
+const HISTORY_LIMIT = 30;
 
 function fail(code, message) {
   const err = new Error(message);
@@ -80,6 +86,105 @@ function cleanTags(tags) {
   return output;
 }
 
+function cleanStringArray(list, limit) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const output = [];
+  for (const item of list) {
+    if (typeof item !== 'string') continue;
+    const value = item.trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(value);
+    if (limit && output.length >= limit) break;
+  }
+  return output;
+}
+
+function sanitizeMemoryHistory(history) {
+  if (!Array.isArray(history)) return [];
+  const output = [];
+  for (const entry of history) {
+    if (!entry || typeof entry !== 'object') continue;
+    const at = typeof entry.at === 'string' ? entry.at : '';
+    if (!at || Number.isNaN(Date.parse(at))) continue;
+    const rating = RATINGS.indexOf(entry.rating) === -1 ? '' : entry.rating;
+    if (!rating) continue;
+    const stage = Math.round(clampNumber(entry.stage, 0, MAX_STAGE, 0));
+    output.push({
+      at: at,
+      rating: rating,
+      stage: stage,
+      intervalHours: clampNumber(entry.intervalHours, 0, EBBINGHAUS_INTERVALS[MAX_STAGE], EBBINGHAUS_INTERVALS[stage]),
+    });
+  }
+  return output.slice(-HISTORY_LIMIT);
+}
+
+function estimateStage(mastery, reps) {
+  const byReps = Math.min(MAX_STAGE, Math.max(0, Math.round(clampNumber(reps, 0, 100000, 0))));
+  const byMastery = Math.min(MAX_STAGE, Math.max(0, Math.round(clampNumber(mastery, 0, MASTERY_MAX, 0) * 2)));
+  return Math.max(byReps, byMastery);
+}
+
+function normalizeMemory(raw, srs, mastery, createdAt) {
+  const source = raw && typeof raw === 'object' ? raw : null;
+  if (!source) {
+    // 旧数据迁移：按 srs.reps/mastery 估算 stage，due 保持
+    const stage = estimateStage(mastery, srs.reps);
+    return {
+      stage: stage,
+      intervalHours: EBBINGHAUS_INTERVALS[stage],
+      due: srs.due || createdAt,
+      lapses: srs.lapses,
+      history: [],
+    };
+  }
+  const stage = Math.round(clampNumber(source.stage, 0, MAX_STAGE, estimateStage(mastery, srs.reps)));
+  const intervalHours = clampNumber(source.intervalHours, 0, EBBINGHAUS_INTERVALS[MAX_STAGE], EBBINGHAUS_INTERVALS[stage]);
+  const due = typeof source.due === 'string' && !Number.isNaN(Date.parse(source.due)) ? source.due : (srs.due || createdAt);
+  const memory = {
+    stage: stage,
+    intervalHours: intervalHours || EBBINGHAUS_INTERVALS[stage],
+    due: due,
+    lapses: Math.max(0, Math.round(clampNumber(source.lapses, 0, 100000, srs.lapses))),
+    history: sanitizeMemoryHistory(source.history),
+  };
+  const lastRating = RATINGS.indexOf(source.lastRating) === -1 ? '' : source.lastRating;
+  if (lastRating) memory.lastRating = lastRating;
+  return memory;
+}
+
+function normalizeLexicon(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const parts = (Array.isArray(raw.parts) ? raw.parts : []).map(function (part) {
+    if (!part || typeof part !== 'object') return null;
+    const text = typeof part.text === 'string' ? part.text.trim() : '';
+    if (!text) return null;
+    const type = ['prefix', 'root', 'suffix'].indexOf(part.type) === -1 ? 'root' : part.type;
+    const item = {
+      text: text,
+      type: type,
+      meaning: typeof part.meaning === 'string' ? part.meaning.trim() : '',
+    };
+    if (typeof part.note === 'string' && part.note.trim()) item.note = part.note.trim();
+    return item;
+  }).filter(Boolean);
+  const word = typeof raw.word === 'string' ? raw.word.trim() : '';
+  const breakdown = typeof raw.breakdown === 'string' ? raw.breakdown.trim() : '';
+  const related = cleanStringArray(raw.related, 12);
+  if (!word && !breakdown && !parts.length && !related.length) return undefined;
+  return {
+    word: word,
+    breakdown: breakdown,
+    parts: parts,
+    related: related,
+    source: 'local',
+  };
+}
+
 function sanitizeSource(source) {
   if (!source || typeof source !== 'object') return {};
   const output = {};
@@ -120,6 +225,14 @@ function normalizeRecord(raw) {
     },
     mastery: Math.round(clampNumber(raw.mastery, 0, MASTERY_MAX, 0)),
   };
+  record.memory = normalizeMemory(raw.memory, record.srs, record.mastery, created);
+  record.srs.due = record.memory.due;
+  const mnemonic = typeof raw.mnemonic === 'string' ? raw.mnemonic.trim() : '';
+  if (mnemonic) record.mnemonic = mnemonic;
+  const associations = cleanStringArray(raw.associations, 8);
+  if (associations.length) record.associations = associations;
+  const lexicon = normalizeLexicon(raw.lexicon);
+  if (lexicon) record.lexicon = lexicon;
   return record;
 }
 
@@ -274,6 +387,9 @@ function createVocabService(options) {
       updatedAt: nowIso(),
       srs: { due: nowIso(), interval: 0, ease: 2.5, reps: 0, lapses: 0 },
       mastery: 0,
+      mnemonic: payload.mnemonic,
+      associations: payload.associations,
+      lexicon: payload.lexicon,
     });
     data.words.push(record);
     persist(data);
@@ -298,6 +414,28 @@ function createVocabService(options) {
     for (const key of ['phonetic', 'translation', 'context', 'contextTranslation', 'note']) {
       if (typeof payload[key] === 'string') {
         word[key] = payload[key];
+        touched = true;
+      }
+    }
+    if (typeof payload.mnemonic === 'string') {
+      const mnemonic = payload.mnemonic.trim();
+      if (mnemonic) word.mnemonic = mnemonic;
+      else delete word.mnemonic;
+      touched = true;
+    }
+    if (Array.isArray(payload.associations)) {
+      const associations = cleanStringArray(payload.associations, 8);
+      if (associations.length) word.associations = associations;
+      else delete word.associations;
+      touched = true;
+    }
+    if (payload.lexicon === null) {
+      delete word.lexicon;
+      touched = true;
+    } else if (payload.lexicon && typeof payload.lexicon === 'object') {
+      const lexicon = normalizeLexicon(payload.lexicon);
+      if (lexicon) {
+        word.lexicon = lexicon;
         touched = true;
       }
     }
@@ -344,36 +482,52 @@ function createVocabService(options) {
     const word = findWord(data, id);
     const now = new Date();
     const nowMs = now.getTime();
+    const memory = word.memory && typeof word.memory === 'object'
+      ? word.memory
+      : normalizeMemory(null, word.srs, word.mastery, word.createdAt);
 
-    let intervalDays = Number(word.srs.interval) || 0;
+    let stage = Math.round(clampNumber(memory.stage, 0, MAX_STAGE, 0));
     let ease = Number(word.srs.ease) || 2.5;
     let reps = Math.max(0, Math.round(Number(word.srs.reps) || 0));
-    let lapses = Math.max(0, Math.round(Number(word.srs.lapses) || 0));
+    let lapses = Math.max(0, Math.round(Number(memory.lapses !== undefined ? memory.lapses : word.srs.lapses) || 0));
     let mastery = Math.round(Number(word.mastery) || 0);
 
     if (rating === 'again') {
-      intervalDays = 10 / (24 * 60);
+      stage = 0;
       ease -= 0.15;
       lapses += 1;
       mastery = Math.max(0, mastery - 1);
     } else if (rating === 'hard') {
-      intervalDays = 1;
+      stage = Math.max(0, stage - 1);
       ease -= 0.15;
-      mastery = Math.max(0, mastery);
     } else if (rating === 'good') {
-      intervalDays = Math.max(1, intervalDays * 2.5);
+      stage = Math.min(MAX_STAGE, stage + 1);
       mastery = Math.min(MASTERY_MAX, mastery + 1);
     } else {
-      intervalDays = Math.max(2, intervalDays * 4);
+      stage = Math.min(MAX_STAGE, stage + 2);
       ease += 0.15;
       mastery = Math.min(MASTERY_MAX, mastery + 2);
     }
 
     ease = clampNumber(ease, EASE_MIN, EASE_MAX, 2.5);
     reps += 1;
+    const intervalHours = EBBINGHAUS_INTERVALS[stage];
+    const due = new Date(nowMs + intervalHours * HOUR_MS).toISOString();
+    const history = (Array.isArray(memory.history) ? memory.history : [])
+      .concat([{ at: now.toISOString(), rating: rating, stage: stage, intervalHours: intervalHours }])
+      .slice(-HISTORY_LIMIT);
+
+    word.memory = {
+      stage: stage,
+      intervalHours: intervalHours,
+      due: due,
+      lastRating: rating,
+      lapses: lapses,
+      history: history,
+    };
     word.srs = {
-      due: new Date(nowMs + intervalDays * DAY_MS).toISOString(),
-      interval: roundTo(intervalDays, 6),
+      due: due,
+      interval: roundTo(intervalHours / 24, 6),
       ease: roundTo(ease, 2),
       reps: reps,
       lapses: lapses,
@@ -398,12 +552,15 @@ function createVocabService(options) {
     let learning = 0;
     let mastered = 0;
     let addedToday = 0;
+    const stages = new Array(MAX_STAGE + 1).fill(0);
     for (const word of data.words) {
       if (Date.parse(word.srs.due) <= nowMs) dueCount += 1;
       if (word.mastery <= 0) newCount += 1;
       else if (word.mastery <= 3) learning += 1;
       else mastered += 1;
       if (localDateKey(new Date(word.createdAt)) === todayKey) addedToday += 1;
+      const stage = Number(word.memory && word.memory.stage);
+      if (Number.isInteger(stage) && stage >= 0 && stage <= MAX_STAGE) stages[stage] += 1;
     }
     return {
       total: data.words.length,
@@ -414,6 +571,16 @@ function createVocabService(options) {
       reviewedToday: Number(data.reviewDays[todayKey]) || 0,
       addedToday: addedToday,
       streak: computeReviewStreak(data.reviewDays, now),
+      stages: stages,
+    };
+  }
+
+  function schedule() {
+    return {
+      intervals: EBBINGHAUS_INTERVALS.map(function (hours, stage) {
+        return { stage: stage, hours: hours, label: EBBINGHAUS_LABELS[stage] };
+      }),
+      maxStage: MAX_STAGE,
     };
   }
 
@@ -465,10 +632,17 @@ function createVocabService(options) {
     due: due,
     review: review,
     stats: stats,
+    schedule: schedule,
     isSaved: isSaved,
     exportCsv: exportCsv,
     dataDir: dataDir,
   };
 }
 
-module.exports = { createVocabService, normalizeWord };
+module.exports = {
+  createVocabService,
+  normalizeWord,
+  EBBINGHAUS_INTERVALS,
+  EBBINGHAUS_LABELS,
+  MAX_STAGE,
+};

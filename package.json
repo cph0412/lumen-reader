@@ -1,7 +1,7 @@
 {
   "name": "lumen-reader",
   "productName": "Lumen 流明阅读",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "description": "A beautiful local-first English reading companion with instant lookup, AI context analysis and spaced-repetition vocabulary.",
   "main": "src/main/main.js",
   "author": "Lumen",

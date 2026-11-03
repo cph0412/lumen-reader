@@ -965,6 +965,77 @@
 }
 .dict-text { font-size: 12px; line-height: 1.66; color: var(--ink-soft); }
 .dict-example { margin-top: 2px; font-size: 11px; font-style: italic; color: var(--muted); }
+.dict-item-body { min-width: 0; }
+.lookup-label--row { justify-content: flex-start; }
+.dict-source {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-soft);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+.dict-relations { display: flex; align-items: baseline; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
+.dict-relations-label { flex: none; font-size: 9px; color: var(--muted); }
+.dict-relation {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-soft);
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.dict-origin { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.dict-origin span { font-size: 9px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.dict-origin p { margin: 3px 0 0; font-size: 11px; line-height: 1.65; color: var(--muted); }
+
+/* 词根词缀 */
+.lookup-section--lexicon { padding-top: 0; }
+.lexicon-head {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.lexicon-head .lookup-label { margin-bottom: 0; }
+.lexicon-breakdown { min-width: 0; font-size: 11px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lexicon-toggle { margin-left: auto; flex: none; font-size: 10px; color: var(--accent-deep); }
+.lexicon-body { padding-top: 9px; }
+.lexicon-parts { display: flex; flex-wrap: wrap; gap: 6px; }
+.lexicon-part {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-soft);
+  font-size: 10.5px;
+  color: var(--ink-soft);
+}
+.lexicon-part b { font-family: var(--font-read); font-size: 12px; color: var(--ink); }
+.lexicon-part--prefix { border-left: 2px solid var(--accent); }
+.lexicon-part--root { border-left: 2px solid var(--sage); }
+.lexicon-part--suffix { border-left: 2px solid var(--muted); }
+.lexicon-related { margin-top: 8px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 10px; color: var(--muted); }
+.lexicon-related .chip { height: 20px; font-size: 10px; padding: 0 6px; }
+
+/* AI 词根 / 联想 */
+.ai-roots { display: flex; flex-wrap: wrap; gap: 5px; }
+.ai-root { padding: 2px 7px; border-radius: 5px; background: var(--bg-soft); font-size: 10.5px; color: var(--ink-soft); }
+.ai-root b { margin-right: 4px; font-family: var(--font-read); color: var(--ink); }
+.ai-block--mnemonic { padding: 9px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.ai-block--mnemonic .ai-label { color: var(--accent-deep); }
+.ai-associations { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 
 .lookup-loading { padding: 4px 16px 18px; display: flex; flex-direction: column; gap: 9px; }
 .lookup-loading .skeleton-text { height: 10px; }

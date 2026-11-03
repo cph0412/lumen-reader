@@ -9,14 +9,13 @@
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { createJsonStore } = require('./store');
+const { createDictionaryService } = require('./dictionary');
 
 const GOOGLE_ENDPOINT = 'https://translate.googleapis.com/translate_a/single';
 const MYMEMORY_ENDPOINT = 'https://api.mymemory.translated.net/get';
-const DICTIONARY_ENDPOINT = 'https://api.dictionaryapi.dev/api/v2/entries/en/';
 
 const GOOGLE_TIMEOUT = 1200;
 const MYMEMORY_TIMEOUT = 8000;
-const DICTIONARY_TIMEOUT = 5000;
 const AI_TIMEOUT = 40000;
 const TEST_TIMEOUT = 20000;
 
@@ -26,7 +25,6 @@ const MAX_FREE_CHARS = 1500;
 const MYMEMORY_CHUNK_CHARS = 420;
 const LOOKUP_CACHE_LIMIT = 600;
 const ANALYSIS_CACHE_LIMIT = 200;
-const DICTIONARY_CACHE_LIMIT = 200;
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com/v1';
 const DEFAULT_MODEL = 'deepseek-chat';
@@ -42,8 +40,11 @@ const SYSTEM_PROMPT = [
   '"collocations":["搭配1","搭配2"],',
   '"examples":[{"en":"英文例句","zh":"中文翻译"}],',
   '"alternatives":["更地道的替换说法"],',
-  '"level":"CEFR 等级，如 B1/B2/C1"}',
-  '所有字段都必须存在，数组可以为空数组。',
+  '"level":"CEFR 等级，如 B1/B2/C1",',
+  '"roots":[{"text":"词根/词缀原文","type":"prefix|root|suffix","meaning":"中文含义"}],',
+  '"mnemonic":"中文联想/谐音/场景记忆",',
+  '"associations":["联想1","联想2"]}',
+  'translation/sense/grammar/nuance 必须存在；数组与 roots/mnemonic/associations 可以为空或省略。',
 ].join('\n');
 
 function fail(code, message) {
@@ -169,7 +170,7 @@ function createTranslationService(options) {
   const cacheDir = opts.dataDir || (settings && settings.dataDir) || null;
   const lookupCache = new Map();
   const analysisCache = new Map();
-  const dictionaryCache = new Map();
+  let dictionaryService = null;
   let cacheStore = null;
   let cacheLoaded = false;
 
@@ -365,42 +366,29 @@ function createTranslationService(options) {
     };
   }
 
+  function getDictionaryService() {
+    if (!dictionaryService) {
+      dictionaryService = createDictionaryService({ settings: settings, fetchImpl: fetchImpl });
+    }
+    return dictionaryService;
+  }
+
   function dictionaryEntry(word) {
     const key = normalizeWord(word);
     if (!key) return null;
-    return dictionaryCache.get(key) || null;
+    try {
+      const service = getDictionaryService();
+      return typeof service.peek === 'function' ? service.peek(key) : null;
+    } catch (err) {
+      return null;
+    }
   }
 
   async function dictionary(word) {
     const key = normalizeWord(word);
     if (!key) return null;
-    const cached = dictionaryCache.get(key);
-    if (cached) return cached;
     try {
-      const data = await requestJson(DICTIONARY_ENDPOINT + encodeURIComponent(key), { timeout: DICTIONARY_TIMEOUT });
-      const entry = Array.isArray(data) ? data[0] : data;
-      if (!entry || !Array.isArray(entry.meanings)) return null;
-      const phonetics = Array.isArray(entry.phonetics) ? entry.phonetics : [];
-      const audio = phonetics.find(function (item) { return item && item.audio; });
-      const phonetic = entry.phonetic || (phonetics.find(function (item) { return item && item.text; }) || {}).text || '';
-      const result = {
-        word: entry.word || key,
-        phonetic: phonetic || undefined,
-        audio: audio ? audio.audio : undefined,
-        meanings: entry.meanings.slice(0, 6).map(function (meaning) {
-          const definition = meaning && Array.isArray(meaning.definitions) ? meaning.definitions[0] : null;
-          return {
-            partOfSpeech: (meaning && meaning.partOfSpeech) || '',
-            definition: (definition && definition.definition) || '',
-            example: (definition && definition.example) || undefined,
-          };
-        }).filter(function (item) { return item.definition; }),
-        source: 'dictionaryapi',
-      };
-      if (!result.meanings.length) return null;
-      dictionaryCache.set(key, result);
-      evictOldest(dictionaryCache, DICTIONARY_CACHE_LIMIT);
-      return result;
+      return await getDictionaryService().lookup(key);
     } catch (err) {
       return null;
     }
@@ -578,6 +566,25 @@ function createTranslationService(options) {
     };
     const level = toText(source.level || source.cefr);
     if (level) analysis.level = level.toUpperCase().slice(0, 8);
+
+    const roots = (Array.isArray(source.roots) ? source.roots : []).map(function (item) {
+      const text = toText(item && typeof item === 'object' ? (item.text || item.root || item.word || item.affix) : item);
+      if (!text) return null;
+      const type = toText(item && typeof item === 'object' ? (item.type || item.kind) : '').toLowerCase();
+      const meaning = toText(item && typeof item === 'object' ? (item.meaning || item.zh || item.definition || item.explain) : '');
+      const normalizedType = ['prefix', 'root', 'suffix'].indexOf(type) === -1 ? 'root' : type;
+      return { text: text, type: normalizedType, meaning: meaning };
+    }).filter(Boolean).slice(0, 6);
+    if (roots.length) analysis.roots = roots;
+
+    const mnemonic = toText(source.mnemonic || source.memory || source.mnemonicSentence);
+    if (mnemonic) analysis.mnemonic = mnemonic;
+    const associationList = toStringArray(source.associations || source.associationList || source.related);
+    const associations = associationList.filter(function (item, index) {
+      return associationList.indexOf(item) === index;
+    }).slice(0, 6);
+    if (associations.length) analysis.associations = associations;
+
     if (!analysis.translation && !analysis.sense) {
       throw fail('AI_ERROR', 'AI 返回内容缺少必要字段');
     }

@@ -28,6 +28,7 @@ const FALLBACK_ICONS = {
 const DEFAULT_SETTINGS = {
   ai: { baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', hasApiKey: false, keyHint: '', temperature: 0.3, local: false, available: false },
   translation: { provider: 'auto', target: 'zh-CN' },
+  dictionary: { provider: 'auto', oxfordAppId: '', hasOxfordAppKey: false, oxfordKeyHint: '' },
   reader: {
     theme: 'paper',
     fontSize: 19,
@@ -47,6 +48,12 @@ const PROVIDERS = [
   { value: 'auto', title: '自动', desc: '优先 AI，失败时回退免费翻译' },
   { value: 'free', title: '免费翻译', desc: 'Google / MyMemory，无需 API Key' },
   { value: 'ai', title: '只用 AI', desc: '使用上面的 AI 接口，需配置 Key' }
+];
+
+const DICTIONARY_PROVIDERS = [
+  { value: 'auto', title: '自动', desc: '有牛津凭证时用牛津，否则用开放词典' },
+  { value: 'free', title: '开放词典', desc: 'dictionaryapi.dev，免费无需凭证' },
+  { value: 'oxford', title: '牛津 API', desc: '牛津商业词典，需自己的 App ID / Key' }
 ];
 
 const THEMES = [
@@ -124,6 +131,33 @@ function aiStatusLabel(ai) {
   return ai && ai.local ? '本地模型' : '已配置';
 }
 
+function dictionaryStatus(dict) {
+  if (!dict) return '未配置';
+  if (dict.provider === 'free') return '开放词典';
+  if (dict.provider === 'oxford') return dict.hasOxfordAppKey ? '牛津 API' : '缺少凭证';
+  return dict.hasOxfordAppKey ? '自动 · 牛津优先' : '自动 · 开放词典';
+}
+
+function dictionaryStatusTone(dict) {
+  if (dict && dict.provider === 'oxford' && !dict.hasOxfordAppKey) return ' is-error';
+  return ' is-ok';
+}
+
+function dictionaryProviderHint(dict) {
+  if (!dict) return '';
+  if (dict.provider === 'free') {
+    return '当前固定使用开放词典 dictionaryapi.dev；牛津凭证会保存，但不会参与查询。';
+  }
+  if (dict.provider === 'oxford') {
+    return dict.hasOxfordAppKey
+      ? '当前使用牛津 API；请求失败时会提示错误，不会静默换成其他词典。'
+      : '已选择牛津 API，但还没有 App Key；查询与测试都会失败，请先填写凭证。';
+  }
+  return dict.hasOxfordAppKey
+    ? '已有牛津凭证，查询优先走牛津；失败时回退到开放词典。'
+    : '还没有牛津凭证，当前使用开放词典；填入凭证后会自动优先牛津。';
+}
+
 function normalizeKey(raw) {
   const key = raw && typeof raw === 'string' ? raw : '';
   if (key === ' ') return 'Space';
@@ -152,6 +186,7 @@ function normalizeSettings(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
   const ai = source.ai || {};
   const translation = source.translation || {};
+  const dictionary = source.dictionary || {};
   const reader = source.reader || {};
   const general = source.general || {};
   const baseUrl = typeof ai.baseUrl === 'string' && ai.baseUrl ? ai.baseUrl : DEFAULT_SETTINGS.ai.baseUrl;
@@ -171,6 +206,12 @@ function normalizeSettings(raw) {
     translation: {
       provider: ['auto', 'free', 'ai'].indexOf(translation.provider) >= 0 ? translation.provider : DEFAULT_SETTINGS.translation.provider,
       target: typeof translation.target === 'string' ? translation.target : DEFAULT_SETTINGS.translation.target
+    },
+    dictionary: {
+      provider: ['auto', 'free', 'oxford'].indexOf(dictionary.provider) >= 0 ? dictionary.provider : DEFAULT_SETTINGS.dictionary.provider,
+      oxfordAppId: typeof dictionary.oxfordAppId === 'string' ? dictionary.oxfordAppId : '',
+      hasOxfordAppKey: Boolean(dictionary.hasOxfordAppKey),
+      oxfordKeyHint: typeof dictionary.oxfordKeyHint === 'string' ? dictionary.oxfordKeyHint : ''
     },
     reader: {
       theme: ['paper', 'sepia', 'dark'].indexOf(reader.theme) >= 0 ? reader.theme : DEFAULT_SETTINGS.reader.theme,
@@ -221,7 +262,8 @@ export async function render(root, ctx) {
     saveChain: Promise.resolve(),
     savedTimer: null,
     keyVisible: false,
-    loading: true
+    loading: true,
+    dictStateTimer: null
   };
 
   root.innerHTML = '<div class="settings-page page" id="settings-page"></div>';
@@ -274,6 +316,7 @@ export async function render(root, ctx) {
           if (ctx.state) ctx.state.settings = state.settings;
           updateBehaviorUi();
           updateKeyHint();
+          updateDictionaryUi();
         }
         setSaved('', '已保存');
       } catch (err) {
@@ -319,6 +362,43 @@ export async function render(root, ctx) {
         ? '已保存，输入新 Key 可替换'
         : (ai.local ? '本地模型无需 Key' : 'sk-…');
     }
+  }
+
+  function updateDictionaryUi() {
+    if (!state.settings || !state.settings.dictionary) return;
+    const dict = state.settings.dictionary;
+
+    const status = page.querySelector('#dict-status');
+    if (status) {
+      status.textContent = dictionaryStatus(dict);
+      status.className = 'settings-card-status' + dictionaryStatusTone(dict);
+    }
+
+    const note = page.querySelector('#dict-provider-note');
+    if (note) note.textContent = dictionaryProviderHint(dict);
+
+    const hint = page.querySelector('#dict-key-hint');
+    if (hint) {
+      if (dict.hasOxfordAppKey) {
+        hint.innerHTML = '已保存 App Key：<b>' + esc(dict.oxfordKeyHint || '••••••') +
+          '</b> · 输入新的 Key 可替换，留空不会修改原来的 Key。';
+      } else {
+        hint.innerHTML = '还没有保存 App Key。牛津凭证只保存在本机，不会上传到任何 Lumen 服务器。';
+      }
+    }
+
+    const keyInput = page.querySelector('#set-oxford-key');
+    if (keyInput) {
+      keyInput.placeholder = dict.hasOxfordAppKey ? '已保存，输入新 Key 可替换' : '填入牛津 App Key';
+    }
+
+    const credentials = page.querySelector('#dict-credentials');
+    if (credentials) credentials.classList.toggle('is-dim', dict.provider === 'free');
+
+    page.querySelectorAll('input[name="dictionary-provider"]').forEach((input) => {
+      const choice = input.closest('.settings-choice');
+      if (choice) choice.classList.toggle('is-on', Boolean(input.checked));
+    });
   }
 
   function updateBehaviorUi() {
@@ -444,6 +524,60 @@ export async function render(root, ctx) {
         lookupBehaviorHtml(settings) +
         '<div class="settings-note settings-note--privacy">' + icon(ctx, 'key', 15) +
           '<span><b>安全存储：</b>Key 由系统 safeStorage 加密后仅保存在本机，不会发往除你填写的 AI 服务之外的任何地方。测试连接会实际发起一次最小请求。</span>' +
+        '</div>' +
+      '</div>' +
+    '</section>';
+  }
+
+  function dictionarySection(settings) {
+    const dict = settings.dictionary;
+    const choices = DICTIONARY_PROVIDERS.map((item) =>
+      '<label class="settings-choice' + (item.value === dict.provider ? ' is-on' : '') + '">' +
+        '<input type="radio" name="dictionary-provider" value="' + item.value + '"' + (item.value === dict.provider ? ' checked' : '') + '>' +
+        '<span class="settings-choice__title">' + item.title + '</span>' +
+        '<span class="settings-choice__desc">' + item.desc + '</span>' +
+      '</label>'
+    ).join('');
+
+    return '<section class="settings-card" aria-label="词典">' +
+      '<div class="settings-card-head">' +
+        '<span class="settings-card-icon settings-card-icon--sage">' + icon(ctx, 'book', 17) + '</span>' +
+        '<div class="settings-card-copy"><h2>词典</h2><p>生词详情与划词卡使用的词典来源；开放词典免费，牛津 API 需要你自己的商业凭证。</p></div>' +
+        '<span class="settings-card-status' + dictionaryStatusTone(dict) + '" id="dict-status">' + esc(dictionaryStatus(dict)) + '</span>' +
+      '</div>' +
+      '<div class="settings-body">' +
+        '<div class="settings-field">' +
+          '<span class="settings-label">词典来源</span>' +
+          '<div class="settings-choice-row" role="radiogroup" aria-label="词典来源">' + choices + '</div>' +
+          '<p class="settings-hint" id="dict-provider-note">' + esc(dictionaryProviderHint(dict)) + '</p>' +
+        '</div>' +
+        '<div class="settings-dict-creds" id="dict-credentials">' +
+          '<div class="settings-grid-2">' +
+            '<label class="settings-field"><span class="settings-label">牛津 App ID</span>' +
+              '<input class="input" id="set-oxford-app-id" type="text" spellcheck="false" autocomplete="off" value="' + esc(dict.oxfordAppId) + '" placeholder="例如 4d2a1b3c">' +
+            '</label>' +
+            '<div class="settings-field">' +
+              '<span class="settings-label">牛津 App Key</span>' +
+              '<div class="settings-input-wrap">' +
+                '<input class="input" id="set-oxford-key" type="password" autocomplete="off" spellcheck="false" placeholder="' + (dict.hasOxfordAppKey ? '已保存，输入新 Key 可替换' : '填入牛津 App Key') + '">' +
+                '<span class="settings-key-tools">' +
+                  '<button type="button" class="icon-btn" id="set-oxford-eye" aria-label="显示或隐藏牛津 App Key" title="显示 / 隐藏">' + icon(ctx, 'eye', 15) + '</button>' +
+                  '<button type="button" class="icon-btn" id="set-oxford-clear" aria-label="清除已保存的牛津 App Key" title="清除已保存的 App Key">' + icon(ctx, 'x', 15) + '</button>' +
+                '</span>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="settings-dict-actions">' +
+            '<div class="settings-dict-actions__copy">' +
+              '<p class="settings-hint" id="dict-key-hint"></p>' +
+              '<p class="settings-result" id="dict-key-state" role="status"></p>' +
+            '</div>' +
+            '<button type="button" class="btn" id="set-test-dict">' + icon(ctx, 'refresh', 15) + '<span>测试连接</span></button>' +
+          '</div>' +
+          '<p class="settings-result" id="dict-test-result" role="status"></p>' +
+        '</div>' +
+        '<div class="settings-note settings-note--warn">' + icon(ctx, 'info', 15) +
+          '<span><b>关于牛津词典：</b>牛津词典是商业 API，需要你自行在牛津官网申请 App ID 与 App Key，Lumen 不内置牛津数据，也不代申请。未填写凭证时会使用免费的 dictionaryapi.dev 开放词典（释义为英文）。</span>' +
         '</div>' +
       '</div>' +
     '</section>';
@@ -615,6 +749,7 @@ export async function render(root, ctx) {
         '<span class="settings-saved" id="set-saved" aria-live="polite">' + icon(ctx, 'check', 13) + '<span>已保存</span></span>' +
       '</div>' +
       aiSection(settings) +
+      dictionarySection(settings) +
       translationSection(settings) +
       readingSection(settings) +
       generalSection(settings) +
@@ -794,6 +929,181 @@ export async function render(root, ctx) {
         } finally {
           testButton.disabled = false;
           testButton.innerHTML = original;
+        }
+      });
+    }
+
+    /* 词典 */
+    page.querySelectorAll('input[name="dictionary-provider"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        if (!input.checked) return;
+        const provider = input.value;
+        if (['auto', 'free', 'oxford'].indexOf(provider) < 0) return;
+        state.settings.dictionary.provider = provider;
+        updateDictionaryUi();
+        queueSave({ dictionary: { provider: provider } });
+      });
+    });
+
+    const oxfordAppIdInput = page.querySelector('#set-oxford-app-id');
+    if (oxfordAppIdInput) {
+      oxfordAppIdInput.addEventListener('input', () => {
+        const value = oxfordAppIdInput.value.trim();
+        state.settings.dictionary.oxfordAppId = value;
+        queueSave({ dictionary: { oxfordAppId: value } });
+      });
+    }
+
+    const oxfordKeyInput = page.querySelector('#set-oxford-key');
+    const oxfordEye = page.querySelector('#set-oxford-eye');
+    let oxfordKeyVisible = false;
+    let oxfordSavePromise = Promise.resolve();
+
+    function setOxfordState(mode, text) {
+      const el = page.querySelector('#dict-key-state');
+      if (!el) return;
+      el.className = 'settings-result' + (mode ? ' is-' + mode : '');
+      el.textContent = text || '';
+      if (state.dictStateTimer) window.clearTimeout(state.dictStateTimer);
+      if (mode !== 'saving' && text) {
+        state.dictStateTimer = window.setTimeout(() => {
+          if (el.textContent === text) el.textContent = '';
+        }, 2600);
+      }
+    }
+
+    async function saveOxfordKey(value) {
+      if (!api || !api.settings || typeof api.settings.save !== 'function') {
+        setOxfordState('error', '当前环境无法保存凭证');
+        return false;
+      }
+      setOxfordState('saving', '正在保存 App Key…');
+      try {
+        const saved = await api.settings.save({ dictionary: { oxfordAppKey: value } });
+        if (saved && typeof saved === 'object') {
+          state.settings = normalizeSettings(saved);
+          if (ctx.state) ctx.state.settings = state.settings;
+        }
+        updateDictionaryUi();
+        setOxfordState('ok', 'App Key 已保存');
+        toast('牛津 App Key 已保存', 'ok');
+        return true;
+      } catch (err) {
+        setOxfordState('error', 'App Key 保存失败');
+        toast('牛津 App Key 保存失败：' + (err && err.message ? err.message : '未知错误'), 'error');
+        return false;
+      }
+    }
+
+    function commitOxfordKey() {
+      if (!oxfordKeyInput) return;
+      const value = oxfordKeyInput.value.trim();
+      if (!value) return;
+      oxfordKeyInput.value = '';
+      oxfordKeyInput.type = 'password';
+      oxfordKeyVisible = false;
+      if (oxfordEye) {
+        oxfordEye.innerHTML = icon(ctx, 'eye', 15);
+        oxfordEye.setAttribute('aria-label', '显示或隐藏牛津 App Key');
+      }
+      oxfordSavePromise = saveOxfordKey(value);
+    }
+
+    if (oxfordKeyInput) {
+      oxfordKeyInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commitOxfordKey();
+        }
+      });
+      oxfordKeyInput.addEventListener('blur', commitOxfordKey);
+    }
+
+    if (oxfordEye && oxfordKeyInput) {
+      oxfordEye.addEventListener('click', () => {
+        oxfordKeyVisible = !oxfordKeyVisible;
+        oxfordKeyInput.type = oxfordKeyVisible ? 'text' : 'password';
+        oxfordEye.innerHTML = icon(ctx, oxfordKeyVisible ? 'eyeOff' : 'eye', 15);
+        oxfordEye.setAttribute('aria-label', oxfordKeyVisible ? '隐藏牛津 App Key' : '显示牛津 App Key');
+        oxfordKeyInput.focus({ preventScroll: true });
+      });
+    }
+
+    const oxfordClearButton = page.querySelector('#set-oxford-clear');
+    if (oxfordClearButton) {
+      oxfordClearButton.addEventListener('click', async () => {
+        const ok = await confirmDialog({
+          title: '清除已保存的牛津 App Key？',
+          body: '清除后词典会回退到开放词典（dictionaryapi.dev），需要重新填写 App Key 才能再使用牛津数据。',
+          confirmText: '清除',
+          danger: true
+        });
+        if (!ok) return;
+        if (oxfordKeyInput && oxfordKeyInput.value.trim()) commitOxfordKey();
+        try { await oxfordSavePromise; } catch (err) { /* noop */ }
+        await flushPendingNow();
+        if (oxfordKeyInput) oxfordKeyInput.value = '';
+        try {
+          const saved = await api.settings.save({ dictionary: { clearOxfordKey: true } });
+          if (saved && typeof saved === 'object') {
+            state.settings = normalizeSettings(saved);
+            if (ctx.state) ctx.state.settings = state.settings;
+          }
+          updateDictionaryUi();
+          setOxfordState('ok', 'App Key 已清除');
+          toast('牛津 App Key 已清除', 'ok');
+        } catch (err) {
+          toast('清除失败：' + (err && err.message ? err.message : '未知错误'), 'error');
+        }
+      });
+    }
+
+    const testDictionaryButton = page.querySelector('#set-test-dict');
+    const dictionaryTestResult = page.querySelector('#dict-test-result');
+    if (testDictionaryButton) {
+      testDictionaryButton.addEventListener('click', async () => {
+        if (!api || !api.settings || typeof api.settings.testDictionary !== 'function') {
+          if (dictionaryTestResult) {
+            dictionaryTestResult.className = 'settings-result is-error';
+            dictionaryTestResult.textContent = '当前版本不支持测试词典连接。';
+          }
+          return;
+        }
+        if (oxfordKeyInput && oxfordKeyInput.value.trim()) commitOxfordKey();
+        try { await oxfordSavePromise; } catch (err) { /* noop */ }
+        await flushPendingNow();
+        const original = testDictionaryButton.innerHTML;
+        testDictionaryButton.disabled = true;
+        testDictionaryButton.innerHTML = icon(ctx, 'refresh', 15) + '<span>测试中…</span>';
+        if (dictionaryTestResult) {
+          dictionaryTestResult.className = 'settings-result';
+          dictionaryTestResult.textContent = '正在测试词典连接…';
+        }
+        try {
+          const result = await api.settings.testDictionary();
+          if (result && result.ok) {
+            const provider = result.provider ||
+              (state.settings.dictionary.hasOxfordAppKey && state.settings.dictionary.provider !== 'free' ? 'oxford' : 'free');
+            const providerLabel = provider === 'oxford' ? '牛津词典' : (provider === 'free' ? '开放词典' : String(provider));
+            if (dictionaryTestResult) {
+              dictionaryTestResult.className = 'settings-result is-ok';
+              dictionaryTestResult.textContent = '连接成功 · ' + providerLabel + (result.message ? ' · ' + result.message : '');
+            }
+            toast('词典连接正常', 'ok');
+          } else {
+            if (dictionaryTestResult) {
+              dictionaryTestResult.className = 'settings-result is-error';
+              dictionaryTestResult.textContent = '连接失败：' + (result && result.message ? result.message : '未知错误');
+            }
+          }
+        } catch (err) {
+          if (dictionaryTestResult) {
+            dictionaryTestResult.className = 'settings-result is-error';
+            dictionaryTestResult.textContent = '连接失败：' + (err && err.message ? err.message : '未知错误');
+          }
+        } finally {
+          testDictionaryButton.disabled = false;
+          testDictionaryButton.innerHTML = original;
         }
       });
     }
@@ -1086,6 +1396,7 @@ export async function render(root, ctx) {
     page.innerHTML = pageHtml();
     updateKeyHint();
     updateBehaviorUi();
+    updateDictionaryUi();
     bind();
   }
 

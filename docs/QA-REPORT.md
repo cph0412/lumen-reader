@@ -1,6 +1,6 @@
 # Lumen Reader · 验收报告
 
-日期：2026-10-29  
+日期：2026-11-03  
 环境：Windows 10.0.26200 / Electron 45.1.0 / Node 22.19.0  
 构建：Electron 无边框窗口，1440×900 截图；Windows 便携版
 
@@ -12,7 +12,7 @@
 npm test
 ```
 
-结果：**81 passed / 0 failed**（node:test，约 0.5s）
+结果：**111 passed / 0 failed**（node:test，约 0.6s）
 
 覆盖：
 - 编码识别：UTF-8、UTF-8 BOM、UTF-16LE/BE、GB18030 回退、乱码比例
@@ -22,6 +22,9 @@ npm test
 - 翻译 Google→MyMemory 降级、HTML 实体、缓存、AI JSON 容错、本地模型无 Key
 - 生词 CRUD、normalized 去重、四档 SRS、due 排序、CSV 导出
 - 统计 streak / weekly / heatmap / 补录日期、笔记 CRUD
+- 词典：dictionaryapi、牛津 API mock、Oxford 凭证加密/清除、回退逻辑
+- 词根词缀：本地 200+ 词素匹配、AI 联想 mnemonic 缓存与 NO_AI_KEY
+- 艾宾浩斯：11 阶段、四档升降级、due 同步、旧数据迁移、schedule
 - 示例书真实资源播种
 
 ### Electron 端到端
@@ -30,7 +33,7 @@ npm test
 npm run selftest
 ```
 
-结果：**22 passed / 0 failed**
+结果：**28 passed / 0 failed**
 
 覆盖：
 1. 本地 AI 无 Key 可用（localhost）
@@ -55,6 +58,12 @@ npm run selftest
 20. 导入章节解析
 21. 关闭自动 AI 解析后，阅读器划词只翻译、不自动请求 AI
 22. 关闭自动解析后，全局划词浮窗也改为手动「解析」
+23. 本地词根词缀分析
+24. AI 联想记忆生成
+25. 艾宾浩斯评分后 stage/due 变化与 11 档 schedule
+26. 生词详情的记忆 / 词根抽屉
+27. 复习页艾宾浩斯曲线渲染
+28. 设置页词典与牛津凭证卡
 
 > 说明：自动化测试运行在远程会话中，Win32 合成输入偶发被系统限制，因此“helper 捕获文本”按“执行不挂起”验收；交互式桌面下已验证可捕获选中文本。
 
@@ -70,7 +79,9 @@ npm run selftest
 - `06-stats.png` 统计卡 / 周柱状图 / 热力图 / 目标
 - `07-settings.png` AI / 翻译 / 阅读 / 通用 / 数据
 - `08-quick-lookup.png` 420×480 全局浮窗
-- `09-ai-lookup.png` AI 语境解析（测试用 mock 响应）
+- `09-ai-lookup.png` AI 语境解析（含词根/联想，测试用 mock 响应）
+- `10-vocabulary-memory.png` 生词详情：记忆阶段 / 词根 / 联想
+- `11-settings-dictionary.png` 词典来源与牛津 API 凭证
 
 截图模式使用临时用户目录与演示数据，不污染真实用户数据。
 
@@ -81,12 +92,18 @@ npx electron-builder --win portable --x64
 ```
 
 产物：
-- `release/Lumen-1.0.4-portable.exe`（111,093,395 bytes，已写入 Lumen 图标与版本信息）
+- `release/Lumen-1.1.0-portable.exe`（111,116,437 bytes，已写入 Lumen 图标与版本信息）
 - `release/win-unpacked/Lumen.exe`
 
-启动验证：便携版进程启动，主窗口标题为“书库 · Lumen 流明阅读”；打包版 `--selftest` 22/22 通过。
+启动验证：便携版进程启动，主窗口标题为“书库 · Lumen 流明阅读”；打包版 `--selftest` 28/28 通过。
 
-## 4. 本轮修复回归
+## 4. 1.1 新增能力
+
+- **增强词典**：开放词典返回音标、词性、释义、例句、同反义、词形、词源；可选牛津 API，无凭证/失败自动回退开放词典并标注来源。
+- **艾宾浩斯记忆曲线**：11 阶段间隔（5 分钟至 120 天），复习页曲线、阶段与四档实际间隔；旧数据自动迁移。
+- **词根词缀 / 联想记忆**：本地 217 条词素保守拆解；AI 生成谐音/场景/词根联想并可持久化；生词详情与划词卡均可查看。
+
+### 1.0.4 以来的 UI 修复
 
 - **划词弹窗外形与操作区**：宽度改为 414–474px，标题/选区/播放/来源分层；正文独立滚动、底栏固定；长句支持展开；排版与留白按卡片宽度重新调整。
 - **底部操作栏被遮挡**：划词卡底部改为两行——收藏主按钮 + 笔记/复制/朗读/重译四个带文字按钮，悬浮提示不再是唯一信息源。
@@ -101,9 +118,10 @@ npx electron-builder --win portable --x64
 - 全局划词依赖前台窗口/剪贴板，受保护应用可能失败；
 - 免费翻译依赖公网，首次查询有 2–4s 延迟；
 - AI 需要用户自备接口，默认不内置公共额度；
-- 仅 TXT，EPUB/PDF/OCR 在路线图中。
+- 仅 TXT，EPUB/PDF/OCR 在路线图中；
+- 牛津词典需要用户自己的 API 凭证；无凭证时用免费开放词典。
 
-## 5. 复现命令
+## 6. 复现命令
 
 ```bash
 npm install

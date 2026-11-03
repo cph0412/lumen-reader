@@ -267,7 +267,7 @@ test('translator: testAI 无 Key / 本地服务', async function () {
   assert.ok(passed.message.indexOf('local-model') !== -1);
 });
 
-test('translator: dictionary 查询与失败降级', async function () {
+test('translator: dictionary 查询（增强结构）与失败降级', async function () {
   const fetchImpl = makeFetch([{
     match: 'dictionaryapi.dev',
     respond: function () {
@@ -275,7 +275,11 @@ test('translator: dictionary 查询与失败降级', async function () {
         word: 'hello',
         phonetic: '/həˈləʊ/',
         phonetics: [{ text: '/həˈləʊ/', audio: 'https://example.com/hello.mp3' }],
-        meanings: [{ partOfSpeech: 'exclamation', definitions: [{ definition: 'used as a greeting', example: 'hello there' }] }],
+        origin: 'early 19th century',
+        meanings: [{
+          partOfSpeech: 'exclamation',
+          definitions: [{ definition: 'used as a greeting', example: 'hello there', synonyms: ['hi'], antonyms: ['bye'] }],
+        }],
       }]);
     },
   }]);
@@ -283,15 +287,58 @@ test('translator: dictionary 查询与失败降级', async function () {
   const entry = await service.dictionary('Hello');
   assert.equal(entry.word, 'hello');
   assert.equal(entry.phonetic, '/həˈləʊ/');
+  assert.equal(entry.audio, 'https://example.com/hello.mp3');
+  assert.equal(entry.origin, 'early 19th century');
   assert.equal(entry.meanings.length, 1);
   assert.equal(entry.meanings[0].partOfSpeech, 'exclamation');
-  assert.equal(entry.source, 'dictionaryapi');
+  assert.deepEqual(entry.meanings[0].synonyms, ['hi']);
+  assert.deepEqual(entry.meanings[0].antonyms, ['bye']);
+  assert.equal(entry.source, 'free');
+  assert.equal(entry.sourceLabel, '开放词典');
   const again = await service.dictionary('hello');
   assert.equal(again.word, 'hello');
   assert.equal(fetchImpl.calls.length, 1, '第二次应命中缓存');
 
   const broken = createTranslationService({ settings: makeSettings(), fetchImpl: makeFetch([{ match: 'dictionaryapi.dev', respond: function () { throw new Error('down'); } }]) });
   assert.equal(await broken.dictionary('world'), null);
+});
+
+test('translator: analyze 归一化扩展 roots/mnemonic/associations 字段', async function () {
+  const content = JSON.stringify({
+    translation: '检查',
+    sense: '仔细查看',
+    grammar: '动词',
+    nuance: '正式',
+    collocations: [],
+    examples: [],
+    alternatives: [],
+    roots: [
+      { text: 'spect', type: 'root', meaning: '看' },
+      { text: 'in-', type: 'prefix', meaning: '进入' },
+      { text: '', type: 'root', meaning: '空文本应被过滤' },
+      { text: 'look', type: 'unknown', meaning: '看' },
+    ],
+    mnemonic: 'in + spect：把目光投进去，就是检查',
+    associations: 'spectator 观众；inspect 检查；inspect 检查',
+  });
+  const fetchImpl = makeFetch([{
+    match: '/chat/completions',
+    respond: function () { return jsonResponse({ choices: [{ message: { content: content } }] }); },
+  }]);
+  const service = createTranslationService({ settings: makeSettings({ apiKey: 'k' }), fetchImpl: fetchImpl });
+  const analysis = await service.analyze({ text: 'inspect', context: 'inspect the room' });
+  assert.equal(analysis.translation, '检查');
+  assert.equal(analysis.sense, '仔细查看');
+  assert.deepEqual(analysis.roots, [
+    { text: 'spect', type: 'root', meaning: '看' },
+    { text: 'in-', type: 'prefix', meaning: '进入' },
+    { text: 'look', type: 'root', meaning: '看' },
+  ]);
+  assert.equal(analysis.mnemonic, 'in + spect：把目光投进去，就是检查');
+  assert.deepEqual(analysis.associations, ['spectator 观众', 'inspect 检查']);
+  const body = JSON.parse(fetchImpl.calls[0].options.body);
+  assert.ok(body.messages[0].content.indexOf('roots') !== -1);
+  assert.ok(body.messages[0].content.indexOf('mnemonic') !== -1);
 });
 
 test('translator: 工具函数', function () {

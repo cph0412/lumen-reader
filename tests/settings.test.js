@@ -156,3 +156,80 @@ test('settings: 损坏的 settings.json 自动恢复默认值', function (t) {
   const files = fs.readdirSync(ctx.dataDir);
   assert.ok(files.some(function (name) { return name.indexOf('settings.json.corrupt-') === 0; }));
 });
+
+test('settings: 词典默认配置（provider=auto，无牛津凭证）', function (t) {
+  const ctx = makeService(t, makeSecret());
+  const settings = ctx.service.get();
+  assert.equal(settings.dictionary.provider, 'auto');
+  assert.equal(settings.dictionary.oxfordAppId, '');
+  assert.equal(settings.dictionary.hasOxfordAppKey, false);
+  assert.equal(settings.dictionary.oxfordKeyHint, '');
+  assert.equal(settings.dictionary.oxfordAppKey, undefined);
+
+  const raw = ctx.service.getRaw();
+  assert.equal(raw.dictionary.provider, 'auto');
+  assert.equal(raw.dictionary.oxfordAppKey, '');
+});
+
+test('settings: 牛津 App Key 加密存储、脱敏与清除', function (t) {
+  const ctx = makeService(t, makeSecret());
+  const plain = 'oxford-secret-key-1234567890';
+  const saved = ctx.service.save({
+    dictionary: { provider: 'oxford', oxfordAppId: '  app-id-1  ', oxfordAppKey: plain },
+  });
+  assert.equal(saved.dictionary.provider, 'oxford');
+  assert.equal(saved.dictionary.oxfordAppId, 'app-id-1');
+  assert.equal(saved.dictionary.hasOxfordAppKey, true);
+  assert.ok(saved.dictionary.oxfordKeyHint.indexOf(plain) === -1);
+  assert.ok(saved.dictionary.oxfordKeyHint.indexOf('1234') !== -1 || saved.dictionary.oxfordKeyHint.indexOf('7890') !== -1);
+  assert.equal(saved.dictionary.oxfordAppKey, undefined);
+
+  const raw = ctx.service.getRaw();
+  assert.equal(raw.dictionary.oxfordAppKey, plain);
+  assert.equal(raw.dictionary.hasOxfordAppKey, true);
+
+  const onDisk = fs.readFileSync(path.join(ctx.dataDir, 'settings.json'), 'utf8');
+  assert.equal(onDisk.indexOf(plain), -1, '磁盘上不能出现明文牛津 Key');
+  assert.ok(onDisk.indexOf('oxfordAppKeyEnc') !== -1);
+  assert.ok(onDisk.indexOf('oxfordAppKey"') === -1);
+
+  const afterEmpty = ctx.service.save({ dictionary: { oxfordAppKey: '' } });
+  assert.equal(afterEmpty.dictionary.hasOxfordAppKey, true);
+  assert.equal(ctx.service.getRaw().dictionary.oxfordAppKey, plain);
+
+  const cleared = ctx.service.save({ dictionary: { clearOxfordKey: true } });
+  assert.equal(cleared.dictionary.hasOxfordAppKey, false);
+  assert.equal(cleared.dictionary.oxfordKeyHint, '');
+  assert.equal(ctx.service.getRaw().dictionary.oxfordAppKey, '');
+  assert.equal(cleared.dictionary.oxfordAppId, 'app-id-1', '清除 Key 不应丢失 App ID');
+  const afterClearDisk = JSON.parse(fs.readFileSync(path.join(ctx.dataDir, 'settings.json'), 'utf8'));
+  assert.equal(afterClearDisk.dictionary.oxfordAppKeyEnc, undefined);
+});
+
+test('settings: 词典配置深合并，不影响 AI Key 与其他设置', function (t) {
+  const ctx = makeService(t, makeSecret());
+  ctx.service.save({ ai: { apiKey: 'sk-ai-key-abcdef' }, reader: { theme: 'dark' } });
+  const saved = ctx.service.save({ dictionary: { provider: 'free', oxfordAppId: 'my-app' } });
+  assert.equal(saved.dictionary.provider, 'free');
+  assert.equal(saved.dictionary.oxfordAppId, 'my-app');
+  assert.equal(saved.ai.hasApiKey, true);
+  assert.equal(saved.reader.theme, 'dark');
+  assert.equal(ctx.service.getRaw().ai.apiKey, 'sk-ai-key-abcdef');
+
+  const second = ctx.service.save({ dictionary: { provider: 'oxford', oxfordAppKey: 'ox-key-2-abcdef' } });
+  assert.equal(second.dictionary.oxfordAppId, 'my-app');
+  assert.equal(second.dictionary.provider, 'oxford');
+  assert.equal(second.ai.hasApiKey, true);
+  assert.equal(ctx.service.getRaw().dictionary.oxfordAppKey, 'ox-key-2-abcdef');
+});
+
+test('settings: 非法词典 provider 归一化为 auto；无 secret 时牛津 Key 本地混淆可还原', function (t) {
+  const ctx = makeService(t, null);
+  const plain = 'ox-local-fallback-key';
+  const saved = ctx.service.save({ dictionary: { provider: 'oxford-api', oxfordAppKey: plain } });
+  assert.equal(saved.dictionary.provider, 'auto');
+  assert.equal(saved.dictionary.hasOxfordAppKey, true);
+  assert.equal(ctx.service.getRaw().dictionary.oxfordAppKey, plain);
+  const onDisk = fs.readFileSync(path.join(ctx.dataDir, 'settings.json'), 'utf8');
+  assert.equal(onDisk.indexOf(plain), -1);
+});

@@ -20,6 +20,8 @@ const FALLBACK_ICONS = {
   tag: '<path d="M4 12V5a1 1 0 0 1 1-1h7l8 8-8 8-8-8z"/><circle cx="8.5" cy="8.5" r="1.2"/>',
   'chevron-right': '<path d="m10 6 6 6-6 6"/>',
   refresh: '<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/>',
+  sparkles: '<path d="m12 4 1.6 4.4L18 10l-4.4 1.6L12 16l-1.6-4.4L6 10l4.4-1.6L12 4z"/><path d="M18 16.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2z"/>',
+  info: '<circle cx="12" cy="12" r="8"/><path d="M12 11v5M12 8h.01"/>',
   dot: '<circle cx="12" cy="12" r="3"/>'
 };
 
@@ -34,6 +36,85 @@ const FILTERS = [
   { value: 'learning', label: '学习中' },
   { value: 'mastered', label: '已掌握' }
 ];
+
+/* 艾宾浩斯阶段：与 docs/ENRICHMENT.md 的阶段间隔保持一致（防御式，后端未就绪时也能展示）。 */
+const MEMORY_STAGES = [
+  { hours: 1 / 12, label: '5 分钟' },
+  { hours: 0.5, label: '30 分钟' },
+  { hours: 12, label: '12 小时' },
+  { hours: 24, label: '1 天' },
+  { hours: 48, label: '2 天' },
+  { hours: 96, label: '4 天' },
+  { hours: 168, label: '7 天' },
+  { hours: 360, label: '15 天' },
+  { hours: 720, label: '30 天' },
+  { hours: 1440, label: '60 天' },
+  { hours: 2880, label: '120 天' }
+];
+
+const MEMORY_RATING_LABELS = { again: '重来', hard: '困难', good: '良好', easy: '简单' };
+const MEMORY_MAX_STAGE = MEMORY_STAGES.length - 1;
+
+function toFiniteNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function clampStage(value) {
+  const parsed = toFiniteNumber(value);
+  if (parsed == null) return null;
+  return Math.max(0, Math.min(MEMORY_MAX_STAGE, Math.round(parsed)));
+}
+
+function stageLabelOf(stage) {
+  const clamped = clampStage(stage);
+  return clamped == null ? '—' : MEMORY_STAGES[clamped].label;
+}
+
+function formatHours(hours) {
+  const parsed = toFiniteNumber(hours);
+  if (parsed == null || parsed <= 0) return '—';
+  if (parsed < 1) return Math.max(1, Math.round(parsed * 60)) + ' 分钟';
+  if (parsed < 24) return Math.round(parsed * 10) / 10 + ' 小时';
+  const days = parsed / 24;
+  return (days >= 10 ? Math.round(days) : Math.round(days * 10) / 10) + ' 天';
+}
+
+function stringList(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (item == null ? '' : String(item).trim()))
+    .filter(Boolean);
+}
+
+function memoryInfoOf(word) {
+  const memory = word && word.memory && typeof word.memory === 'object' ? word.memory : null;
+  const srs = word && word.srs && typeof word.srs === 'object' ? word.srs : {};
+  const srsInterval = toFiniteNumber(srs.interval);
+  return {
+    hasMemory: Boolean(memory),
+    stage: memory ? clampStage(memory.stage) : null,
+    intervalHours: memory
+      ? toFiniteNumber(memory.intervalHours)
+      : (srsInterval != null ? srsInterval * 24 : null),
+    due: String((memory && memory.due) || srs.due || ''),
+    lapses: memory ? toFiniteNumber(memory.lapses) : toFiniteNumber(srs.lapses),
+    reps: toFiniteNumber(srs.reps),
+    history: memory && Array.isArray(memory.history) ? memory.history : []
+  };
+}
+
+function lexiconHasContent(lexicon) {
+  if (!lexicon || typeof lexicon !== 'object') return false;
+  const breakdown = typeof lexicon.breakdown === 'string' ? lexicon.breakdown.trim() : '';
+  const parts = Array.isArray(lexicon.parts) ? lexicon.parts : [];
+  const related = Array.isArray(lexicon.related) ? lexicon.related : [];
+  if (parts.length || related.length) return true;
+  if (!breakdown) return false;
+  // 本地词库没有命中时会把 breakdown 回填为原词，不应把原词当成词根拆解展示。
+  const word = typeof lexicon.word === 'string' ? lexicon.word.trim().toLowerCase() : '';
+  return !(word && breakdown.toLowerCase() === word);
+}
 
 function icon(ctx, name, size = 18) {
   const fn = ctx && ctx.icons && ctx.icons[name];
@@ -173,7 +254,8 @@ export async function render(root, ctx) {
     openId: null,
     noteTimer: null,
     searchTimer: null,
-    reqId: 0
+    reqId: 0,
+    lexiconById: {}
   };
 
   root.innerHTML =
@@ -370,13 +452,6 @@ export async function render(root, ctx) {
     return { tone: 'later', label: formatDate(ctx, dueDate.toISOString(), 'short'), title: '到期：' + formatDate(ctx, dueDate.toISOString(), 'long') };
   }
 
-  function intervalLabel(word) {
-    const interval = Number(word && word.srs && word.srs.interval);
-    if (!Number.isFinite(interval) || interval <= 0) return '—';
-    if (interval < 1) return Math.max(1, Math.round(interval * 24 * 60)) + ' 分';
-    return (interval >= 10 ? Math.round(interval) : Math.round(interval * 10) / 10) + ' 天';
-  }
-
   function masteryDots(word) {
     const value = masteryOf(word);
     let dots = '';
@@ -393,11 +468,15 @@ export async function render(root, ctx) {
       ? '<span class="vocab-phon">' + esc(word.phonetic) + '</span>'
       : '<span class="vocab-phon">—</span>';
     const bookTitle = word.source && word.source.bookTitle;
-    const chapterTitle = word.source && word.source.chapterTitle;
+    const rawChapter = word.source && word.source.chapterTitle;
+    const chapterTitle = rawChapter && rawChapter !== bookTitle ? rawChapter : '';
     const sourceHtml = bookTitle
       ? '<span class="vocab-source__book">' + esc(bookTitle) + '</span>' +
         (chapterTitle ? '<span class="vocab-source__chap">' + esc(chapterTitle) + '</span>' : '')
       : '<span class="vocab-muted">手动添加</span>';
+    const stage = word.memory && typeof word.memory === 'object' ? clampStage(word.memory.stage) : null;
+    const stageDot = stage == null ? '' :
+      '<span class="vocab-stage" title="艾宾浩斯阶段 ' + (stage + 1) + '/' + (MEMORY_MAX_STAGE + 1) + '" aria-label="记忆阶段 ' + (stage + 1) + '"></span>';
 
     return '<article class="vocab-row" role="button" tabindex="0" data-id="' + esc(word.id) + '" aria-label="查看 ' + esc(word.word) + ' 的详情">' +
       '<div class="vocab-row__word"><span class="vocab-word">' + esc(word.word) + '</span>' + phonetic + '</div>' +
@@ -405,7 +484,7 @@ export async function render(root, ctx) {
       '<div class="vocab-row__source vocab-source">' + sourceHtml + '</div>' +
       '<div class="vocab-row__added vocab-date">' + esc(formatDate(ctx, word.createdAt, 'short') || '—') + '</div>' +
       '<div class="vocab-row__mastery">' + masteryDots(word) + '</div>' +
-      '<div class="vocab-row__due"><span class="vocab-due vocab-due--' + due.tone + '" title="' + esc(due.title) + '">' + esc(due.label) + '</span></div>' +
+      '<div class="vocab-row__due">' + stageDot + '<span class="vocab-due vocab-due--' + due.tone + '" title="' + esc(due.title) + '">' + esc(due.label) + '</span></div>' +
       '<div class="vocab-acts">' +
         '<button type="button" class="icon-btn vocab-act-speak" data-act="speak" title="朗读发音" aria-label="朗读 ' + esc(word.word) + '">' + icon(ctx, 'speaker', 16) + '</button>' +
         '<button type="button" class="icon-btn vocab-act-del" data-act="delete" title="删除生词" aria-label="删除 ' + esc(word.word) + '">' + icon(ctx, 'trash', 16) + '</button>' +
@@ -592,6 +671,286 @@ export async function render(root, ctx) {
     ).join('');
   }
 
+  function relativeTime(iso) {
+    if (!iso) return '';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '';
+    const diff = date.getTime() - Date.now();
+    if (diff <= 0) return '已到期';
+    const minute = 60 * 1000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+    if (diff < hour) return Math.max(1, Math.round(diff / minute)) + ' 分钟后';
+    if (diff < day) return Math.round(diff / hour) + ' 小时后';
+    if (diff < day * 30) return Math.round(diff / day) + ' 天后';
+    return '稍后';
+  }
+
+  function memoryBlockHtml(word) {
+    const info = memoryInfoOf(word);
+    const stage = info.stage;
+    let segments = '';
+    for (let i = 0; i <= MEMORY_MAX_STAGE; i += 1) {
+      segments += '<i class="' + (stage != null && i <= stage ? 'is-on' : '') + '"></i>';
+    }
+    const dueDate = formatDate(ctx, info.due, 'short');
+    const dueRelative = relativeTime(info.due);
+    const dueText = info.due
+      ? '<b>' + esc(dueRelative || dueDate || '已排程') + '</b>' +
+        (dueDate ? '<span>' + esc(dueDate) + '</span>' : '')
+      : '<b>未排程</b><span>复习一次后开始计时</span>';
+    const intervalText = info.intervalHours != null
+      ? formatHours(info.intervalHours)
+      : (stage == null ? '—' : stageLabelOf(stage));
+    const history = info.history.slice(-4).reverse();
+    const historyHtml = history.length
+      ? '<ol class="vd-memory-history">' + history.map((entry) => {
+          const rating = entry && entry.rating && MEMORY_RATING_LABELS[entry.rating] ? entry.rating : '';
+          const entryStage = clampStage(entry && entry.stage);
+          const at = entry && entry.at ? formatDate(ctx, entry.at, 'short') : '';
+          return '<li>' +
+            '<span class="vd-memory-history__rating' + (rating ? ' is-' + rating : '') + '">' + esc(rating ? MEMORY_RATING_LABELS[rating] : '复习') + '</span>' +
+            '<span class="vd-memory-history__stage">阶段 ' + (entryStage == null ? '—' : (entryStage + 1) + '/' + (MEMORY_MAX_STAGE + 1)) + '</span>' +
+            '<time>' + esc(at || '—') + '</time>' +
+          '</li>';
+        }).join('') + '</ol>'
+      : '<p class="vd-memory-empty">还没有复习记录。复习一次后，这里会显示阶段与评分的变化。</p>';
+
+    return '<div class="vd-memory">' +
+      '<div class="vd-block-head">' +
+        '<span class="vd-label">记忆</span>' +
+        '<span class="vd-memory-badge">艾宾浩斯 ' + (stage == null ? '—' : (stage + 1) + '/' + (MEMORY_MAX_STAGE + 1)) + '</span>' +
+      '</div>' +
+      '<div class="vd-memory-bars" aria-hidden="true">' + segments + '</div>' +
+      '<div class="vd-memory-grid">' +
+        '<div class="vd-memory-fact"><span>当前阶段</span><b>' + (stage == null ? '—' : (stage + 1) + '<i>/' + (MEMORY_MAX_STAGE + 1) + '</i>') + '</b></div>' +
+        '<div class="vd-memory-fact"><span>下次复习</span>' + dueText + '</div>' +
+        '<div class="vd-memory-fact"><span>本次间隔</span><b>' + esc(intervalText) + '</b></div>' +
+        '<div class="vd-memory-fact"><span>遗忘 / 复习</span><b>' + formatNumber(ctx, info.lapses == null ? 0 : info.lapses) + ' / ' + formatNumber(ctx, info.reps == null ? 0 : info.reps) + '</b></div>' +
+      '</div>' +
+      historyHtml +
+    '</div>';
+  }
+
+  function partChipsHtml(parts) {
+    return (Array.isArray(parts) ? parts : []).map((part) => {
+      const type = part && part.type;
+      const tone = type === 'prefix' ? 'prefix' : (type === 'suffix' ? 'suffix' : 'root');
+      const typeLabel = tone === 'prefix' ? '前缀' : (tone === 'suffix' ? '后缀' : '词根');
+      const note = part && typeof part.note === 'string' ? part.note.trim() : '';
+      return '<span class="vd-part vd-part--' + tone + '"' + (note ? ' title="' + esc(note) + '"' : '') + '>' +
+        '<em>' + typeLabel + '</em>' +
+        '<b>' + esc(part && part.text) + '</b>' +
+        (part && part.meaning ? '<span>' + esc(part.meaning) + '</span>' : '') +
+      '</span>';
+    }).join('');
+  }
+
+  function relatedChipsHtml(words) {
+    const list = stringList(words).slice(0, 8);
+    if (!list.length) return '';
+    return '<div class="vd-related-row">' +
+      '<span class="vd-related-label">同词族</span>' +
+      list.map((item) =>
+        '<button type="button" class="vd-related" data-related="' + esc(item) + '" title="复制 ' + esc(item) + '">' + esc(item) + '</button>'
+      ).join('') +
+    '</div>';
+  }
+
+  function lexiconBodyHtml(lexicon) {
+    if (!lexiconHasContent(lexicon)) {
+      return '<p class="vd-muted-line">正在分析词根与词缀…</p>';
+    }
+    const word = typeof lexicon.word === 'string' ? lexicon.word.trim().toLowerCase() : '';
+    const rawBreakdown = typeof lexicon.breakdown === 'string' ? lexicon.breakdown.trim() : '';
+    const breakdown = word && rawBreakdown.toLowerCase() === word ? '' : rawBreakdown;
+    return (breakdown ? '<p class="vd-lex-breakdown">' + esc(breakdown) + '</p>' : '') +
+      (Array.isArray(lexicon.parts) && lexicon.parts.length
+        ? '<div class="vd-parts">' + partChipsHtml(lexicon.parts) + '</div>'
+        : '') +
+      relatedChipsHtml(lexicon.related);
+  }
+
+  function lexiconBlockHtml(word) {
+    const saved = state.lexiconById[word.id] || (lexiconHasContent(word.lexicon) ? word.lexicon : null);
+    return '<div class="vd-block vd-lexicon" id="vd-lexicon" data-loading="' + (saved ? 'false' : 'true') + '">' +
+      '<div class="vd-block-head">' +
+        '<span class="vd-label">词根词缀</span>' +
+        '<span class="vd-block-aside" id="vd-lexicon-aside">' + (saved ? '本地词库' : '') + '</span>' +
+      '</div>' +
+      '<div class="vd-lexicon-body" id="vd-lexicon-body">' +
+        (saved ? lexiconBodyHtml(saved) : '<p class="vd-muted-line">正在分析词根与词缀…</p>') +
+      '</div>' +
+    '</div>';
+  }
+
+  function hasMnemonic(word) {
+    return Boolean(
+      (typeof word.mnemonic === 'string' && word.mnemonic.trim()) ||
+      stringList(word.associations).length
+    );
+  }
+
+  function mnemonicBodyHtml(word) {
+    const mnemonic = typeof word.mnemonic === 'string' ? word.mnemonic.trim() : '';
+    const associations = stringList(word.associations);
+    const family = stringList(word._wordFamily);
+    if (!mnemonic && !associations.length) {
+      return '<p class="vd-mnemonic-empty">还没有联想记忆。可以自己写一句，也可以让 AI 按谐音、场景或词根帮你编一个。</p>';
+    }
+    return (mnemonic ? '<p class="vd-mnemonic-text">' + esc(mnemonic) + '</p>' : '') +
+      (associations.length
+        ? '<div class="vd-assoc-list">' + associations.map((item) => '<span class="vd-assoc">' + esc(item) + '</span>').join('') + '</div>'
+        : '') +
+      (family.length ? relatedChipsHtml(family) : '');
+  }
+
+  function mnemonicBlockHtml(word) {
+    return '<div class="vd-block vd-mnemonic" id="vd-mnemonic">' +
+      '<div class="vd-block-head">' +
+        '<span class="vd-label">联想记忆</span>' +
+        '<button type="button" class="btn ghost vd-mnemonic-btn" data-vd="mnemonic">' +
+          icon(ctx, 'sparkles', 14) + '<span>' + (hasMnemonic(word) ? '重新生成' : 'AI 生成联想') + '</span>' +
+        '</button>' +
+      '</div>' +
+      '<div class="vd-mnemonic-body" id="vd-mnemonic-body">' + mnemonicBodyHtml(word) + '</div>' +
+    '</div>';
+  }
+
+  function mergeWordUpdate(id, updated) {
+    if (!updated || typeof updated !== 'object') return;
+    const index = state.words.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    const localFamily = state.words[index]._wordFamily;
+    state.words[index] = Object.assign({}, state.words[index], updated);
+    if (localFamily && !state.words[index]._wordFamily) state.words[index]._wordFamily = localFamily;
+  }
+
+  async function copyRelatedWord(rawText) {
+    const value = String(rawText == null ? '' : rawText).trim();
+    if (!value) return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(value);
+        toast('已复制「' + value + '」', 'ok');
+        return;
+      }
+    } catch (err) { /* 剪贴板不可用时给出提示，不打断阅读 */ }
+    toast('「' + value + '」· 可手动复制', 'warn');
+  }
+
+  async function loadLexicon(word) {
+    if (!els.drawer) return;
+    if (lexiconHasContent(state.lexiconById[word.id])) return;
+    if (lexiconHasContent(word.lexicon)) {
+      state.lexiconById[word.id] = word.lexicon;
+      return;
+    }
+    const block = els.drawer.querySelector('#vd-lexicon');
+    const body = els.drawer.querySelector('#vd-lexicon-body');
+    const aside = els.drawer.querySelector('#vd-lexicon-aside');
+    const available = Boolean(api && api.lookup && typeof api.lookup.lexicon === 'function');
+    if (!available) {
+      if (block) {
+        block.classList.add('is-unavailable');
+        block.setAttribute('data-loading', 'false');
+      }
+      if (body) body.innerHTML = '<p class="vd-muted-line">当前版本暂不提供词根词缀分析。</p>';
+      if (aside) aside.textContent = '';
+      return;
+    }
+    if (body) body.innerHTML = '<p class="vd-muted-line">正在分析词根与词缀…</p>';
+    try {
+      const result = await api.lookup.lexicon(word.word);
+      if (state.openId !== word.id) return;
+      if (!lexiconHasContent(result)) {
+        if (block) block.setAttribute('data-loading', 'false');
+        if (body) body.innerHTML = '<p class="vd-muted-line">这个单词没有匹配到可靠的词根词缀。</p>';
+        if (aside) aside.textContent = '本地词库';
+        return;
+      }
+      state.lexiconById[word.id] = result;
+      if (body) body.innerHTML = lexiconBodyHtml(result);
+      if (aside) aside.textContent = '本地词库';
+      if (block) block.setAttribute('data-loading', 'false');
+    } catch (err) {
+      if (state.openId !== word.id) return;
+      if (block) block.setAttribute('data-loading', 'false');
+      if (body) {
+        body.innerHTML = '<p class="vd-muted-line is-error">词根分析暂时失败。' +
+          '<button type="button" class="vd-retry" data-mem-action="retry-lexicon">重试</button></p>';
+      }
+    }
+  }
+
+  async function generateMnemonic(word, button) {
+    if (!api || !api.lookup || typeof api.lookup.mnemonic !== 'function') {
+      toast('当前版本暂不支持 AI 联想生成', 'warn');
+      return;
+    }
+    const body = els.drawer ? els.drawer.querySelector('#vd-mnemonic-body') : null;
+    if (button) {
+      button.disabled = true;
+      button.classList.add('is-busy');
+      button.innerHTML = icon(ctx, 'refresh', 14) + '<span>生成中…</span>';
+    }
+    if (body) body.innerHTML = '<p class="vd-muted-line">AI 正在编织联想，请稍候…</p>';
+    try {
+      const result = await api.lookup.mnemonic({
+        word: word.word,
+        translation: word.translation || '',
+        context: word.context || ''
+      });
+      if (state.openId !== word.id) return;
+      const mnemonic = result && typeof result.mnemonic === 'string' ? result.mnemonic.trim() : '';
+      const associations = stringList(result && result.associations);
+      const family = stringList(result && result.wordFamily);
+      if (!mnemonic && !associations.length) {
+        throw new Error('AI 没有返回可以展示的联想内容');
+      }
+      word.mnemonic = mnemonic;
+      word.associations = associations;
+      if (family.length) word._wordFamily = family;
+      if (body) body.innerHTML = mnemonicBodyHtml(word);
+
+      const patch = { mnemonic: mnemonic, associations: associations };
+      const lexicon = state.lexiconById[word.id] || (lexiconHasContent(word.lexicon) ? word.lexicon : null);
+      if (lexiconHasContent(lexicon)) patch.lexicon = lexicon;
+      try {
+        const updated = await api.vocab.update(word.id, patch);
+        mergeWordUpdate(word.id, updated);
+        toast('联想记忆已生成并保存', 'ok');
+      } catch (saveErr) {
+        toast('联想已生成，但保存失败：' + (saveErr && saveErr.message ? saveErr.message : '未知错误'), 'warn');
+      }
+    } catch (err) {
+      const code = err && err.code;
+      const message = err && err.message ? err.message : '未知错误';
+      if (code === 'NO_AI_KEY') {
+        if (body) {
+          body.innerHTML = '<div class="vd-ai-hint">' + icon(ctx, 'info', 14) +
+            '<span>AI 联想需要 API Key。去设置里配置后回来再试。</span>' +
+            '<button type="button" class="btn ghost vd-ai-hint__btn" data-mem-action="settings">去设置</button>' +
+          '</div>' + (hasMnemonic(word) ? mnemonicBodyHtml(word) : '');
+        }
+        toast('还没有配置 AI Key，去设置里填写后即可生成联想', 'warn');
+      } else {
+        if (body) {
+          body.innerHTML = '<p class="vd-muted-line is-error">生成失败：' + esc(message) + '</p>' +
+            (hasMnemonic(word) ? mnemonicBodyHtml(word) : '');
+        }
+        toast('生成失败：' + message, 'error');
+      }
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.classList.remove('is-busy');
+        button.innerHTML = icon(ctx, 'sparkles', 14) +
+          '<span>' + (hasMnemonic(word) ? '重新生成' : 'AI 生成联想') + '</span>';
+      }
+    }
+  }
+
   function drawerHtml(word) {
     const sourceParts = Array.from(new Set([word.source && word.source.bookTitle, word.source && word.source.chapterTitle].filter(Boolean)));
     const sourceLabel = sourceParts.length ? sourceParts.join(' · ') : '手动添加';
@@ -615,12 +974,9 @@ export async function render(root, ctx) {
         '</div>' +
         '<p class="vd-trans">' + esc(word.translation || '暂无释义') + '</p>' +
         context + contextTranslation +
-        '<div class="vd-stats">' +
-          '<div><span>复习</span><b>' + formatNumber(ctx, Number(word.srs && word.srs.reps) || 0) + '</b></div>' +
-          '<div><span>遗忘</span><b>' + formatNumber(ctx, Number(word.srs && word.srs.lapses) || 0) + '</b></div>' +
-          '<div><span>下次间隔</span><b>' + esc(intervalLabel(word)) + '</b></div>' +
-          '<div><span>上次复习</span><b>' + esc(word.lastReviewedAt ? formatDate(ctx, word.lastReviewedAt, 'short') : '—') + '</b></div>' +
-        '</div>' +
+        memoryBlockHtml(word) +
+        lexiconBlockHtml(word) +
+        mnemonicBlockHtml(word) +
         '<div class="vd-field">' +
           '<label class="vd-label" for="vd-note">笔记</label>' +
           '<textarea class="input vd-note" id="vd-note" rows="4" placeholder="写下你的记忆线索：搭配、场景、词根…">' + esc(word.note || '') + '</textarea>' +
@@ -696,6 +1052,7 @@ export async function render(root, ctx) {
           }
         }
         if (action === 'delete') removeWordById(word.id, button);
+        if (action === 'mnemonic') generateMnemonic(word, button);
       });
     });
 
@@ -764,6 +1121,32 @@ export async function render(root, ctx) {
     }
 
     bindTagRemove();
+
+    /* 记忆 / 词根 / 联想：related chips、去设置、重试词根 */
+    const scrollArea = drawer.querySelector('.vd-scroll');
+    if (scrollArea) {
+      scrollArea.addEventListener('click', (event) => {
+        const related = event.target.closest('[data-related]');
+        if (related) {
+          copyRelatedWord(related.getAttribute('data-related'));
+          return;
+        }
+        const actionNode = event.target.closest('[data-mem-action]');
+        if (!actionNode) return;
+        const memAction = actionNode.getAttribute('data-mem-action');
+        if (memAction === 'settings') {
+          navigate('settings');
+          return;
+        }
+        if (memAction === 'retry-lexicon') {
+          delete state.lexiconById[word.id];
+          const body = drawer.querySelector('#vd-lexicon-body');
+          if (body) body.innerHTML = '<p class="vd-muted-line">正在重新分析词根与词缀…</p>';
+          loadLexicon(word);
+        }
+      });
+    }
+    loadLexicon(word);
   }
 
   /* ---- 加载 -------------------------------------------------------------- */

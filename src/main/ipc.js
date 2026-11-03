@@ -10,7 +10,7 @@ function fail(code, message) {
   return err;
 }
 
-function registerIpc({ dataDir, library, settings, translator, vocab, notes, stats, historyStore, windows, hotkey }) {
+function registerIpc({ dataDir, library, settings, translator, dictionary, lexicon, vocab, notes, stats, historyStore, windows, hotkey }) {
   const { ipcMain } = require('electron');
 
   function handle(channel, fn) {
@@ -186,9 +186,25 @@ function registerIpc({ dataDir, library, settings, translator, vocab, notes, sta
   });
 
   handle('lookup:dictionary', async ({ word }) => {
-    if (typeof translator.dictionary === 'function') return translator.dictionary(word);
-    const result = await translator.lookup({ text: String(word || '').trim() });
+    const clean = String(word || '').trim();
+    if (!clean) return null;
+    if (dictionary && typeof dictionary.lookup === 'function') return dictionary.lookup(clean);
+    if (typeof translator.dictionary === 'function') return translator.dictionary(clean);
+    const result = await translator.lookup({ text: clean });
     return result.dictionary || null;
+  });
+
+  handle('lookup:lexicon', async ({ word }) => {
+    const clean = String(word || '').trim();
+    if (!clean) throw fail('INVALID_INPUT', '单词不能为空');
+    if (!lexicon || typeof lexicon.analyze !== 'function') return null;
+    return lexicon.analyze(clean);
+  });
+
+  handle('lookup:mnemonic', async (input) => {
+    if (!input || typeof input.word !== 'string' || !input.word.trim()) throw fail('INVALID_INPUT', '单词不能为空');
+    if (!lexicon || typeof lexicon.mnemonic !== 'function') throw fail('UNAVAILABLE', '联想记忆服务不可用');
+    return lexicon.mnemonic(input);
   });
 
   handle('lookup:history', async ({ limit }) => {
@@ -213,6 +229,7 @@ function registerIpc({ dataDir, library, settings, translator, vocab, notes, sta
     return result;
   });
   handle('vocab:stats', async () => vocab.stats());
+  handle('vocab:schedule', async () => (typeof vocab.schedule === 'function' ? vocab.schedule() : { intervals: [], maxStage: 10 }));
   handle('vocab:is-saved', async ({ normalized }) => vocab.isSaved(String(normalized || '')));
 
   handle('vocab:export-csv', async () => {
@@ -263,6 +280,11 @@ function registerIpc({ dataDir, library, settings, translator, vocab, notes, sta
 
   handle('settings:test-ai', async () => translator.testAI());
 
+  handle('settings:test-dictionary', async () => {
+    if (dictionary && typeof dictionary.testDictionary === 'function') return dictionary.testDictionary();
+    return { ok: false, provider: 'free', message: '词典服务不可用' };
+  });
+
   handle('settings:export-data', async () => {
     const result = await dialog.showOpenDialog(windows.mainWindow, {
       title: '选择备份保存位置',
@@ -282,6 +304,11 @@ function registerIpc({ dataDir, library, settings, translator, vocab, notes, sta
       delete raw.ai.apiKey;
       raw.ai.hasApiKey = false;
       raw.ai.keyHint = '';
+      if (raw.dictionary) {
+        delete raw.dictionary.oxfordAppKey;
+        raw.dictionary.hasOxfordAppKey = false;
+        raw.dictionary.oxfordKeyHint = '';
+      }
       await fs.writeFile(path.join(target, 'settings.json'), JSON.stringify(raw, null, 2), 'utf8');
     } catch (_) {}
     try {

@@ -1065,3 +1065,70 @@
   .settings-behavior-summary { align-self: flex-start; max-width: none; }
   .settings-behavior-row { flex-direction: column; align-items: flex-start; gap: 8px; }
 }
+
+
+/* ---- 词典 ---------------------------------------------------------------- */
+.settings-dict-creds {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+  transition: opacity 160ms ease;
+}
+
+.settings-dict-creds.is-dim { opacity: 0.7; }
+
+.settings-dict-creds .settings-field .input { background: var(--card); }
+
+.settings-field .settings-input-wrap {
+  flex: none;
+  width: 100%;
+}
+
+.settings-field .settings-input-wrap .input {
+  height: 40px;
+  padding: 0 74px 0 12px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.settings-dict-actions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.settings-dict-actions__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-dict-actions .btn {
+  height: 36px;
+  padding: 0 14px;
+  gap: 6px;
+  font-size: 12px;
+  border-radius: var(--radius);
+  flex: none;
+}
+
+.settings-dict-actions .btn svg { width: 15px; height: 15px; }
+
+.settings-dict-creds .settings-result { margin: 0; }
+
+@media (max-width: 780px) {
+  .settings-dict-actions { flex-direction: column; align-items: stretch; }
+  .settings-dict-actions .btn { align-self: flex-start; }
+}

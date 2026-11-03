@@ -58,6 +58,8 @@ const api = {
     quick: (input) => call('lookup:quick', input),
     analyze: (input) => call('lookup:analyze', input),
     dictionary: (word) => call('lookup:dictionary', { word }),
+    lexicon: (word) => call('lookup:lexicon', { word }),
+    mnemonic: (input) => call('lookup:mnemonic', input),
     history: (limit) => call('lookup:history', { limit })
   },
   vocab: {
@@ -68,6 +70,7 @@ const api = {
     due: (limit) => call('vocab:due', { limit }),
     review: (id, rating) => call('vocab:review', { id, rating }),
     stats: () => call('vocab:stats'),
+    schedule: () => call('vocab:schedule'),
     exportCsv: () => call('vocab:export-csv'),
     isSaved: (normalized) => call('vocab:is-saved', { normalized })
   },
@@ -85,6 +88,7 @@ const api = {
     get: () => call('settings:get'),
     save: (patch) => call('settings:save', { patch }),
     testAI: () => call('settings:test-ai'),
+    testDictionary: () => call('settings:test-dictionary'),
     exportData: () => call('settings:export-data'),
     importData: () => call('settings:import-data')
   },

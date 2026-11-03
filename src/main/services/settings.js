@@ -32,10 +32,15 @@ const DEFAULT_SETTINGS = {
     minimizeToTray: true,
     dailyGoalMinutes: 30,
   },
+  dictionary: {
+    provider: 'auto',
+    oxfordAppId: '',
+  },
 };
 
 const THEMES = ['paper', 'sepia', 'dark'];
 const PROVIDERS = ['auto', 'free', 'ai'];
+const DICTIONARY_PROVIDERS = ['auto', 'free', 'oxford'];
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -76,6 +81,7 @@ function sanitize(input) {
   const translation = isPlainObject(source.translation) ? source.translation : {};
   const reader = isPlainObject(source.reader) ? source.reader : {};
   const general = isPlainObject(source.general) ? source.general : {};
+  const dictionary = isPlainObject(source.dictionary) ? source.dictionary : {};
 
   return {
     ai: {
@@ -103,6 +109,10 @@ function sanitize(input) {
       hotkey: asString(general.hotkey, DEFAULT_SETTINGS.general.hotkey),
       minimizeToTray: asBoolean(general.minimizeToTray, DEFAULT_SETTINGS.general.minimizeToTray),
       dailyGoalMinutes: Math.round(asNumber(general.dailyGoalMinutes, DEFAULT_SETTINGS.general.dailyGoalMinutes, 1, 480)),
+    },
+    dictionary: {
+      provider: DICTIONARY_PROVIDERS.indexOf(dictionary.provider) === -1 ? DEFAULT_SETTINGS.dictionary.provider : dictionary.provider,
+      oxfordAppId: typeof dictionary.oxfordAppId === 'string' ? dictionary.oxfordAppId.trim() : DEFAULT_SETTINGS.dictionary.oxfordAppId,
     },
   };
 }
@@ -200,10 +210,16 @@ function createSettingsService(options) {
     return typeof ai.apiKey === 'string' ? ai.apiKey : '';
   }
 
+  function storedOxfordKey(stored) {
+    const dictionary = isPlainObject(stored.dictionary) ? stored.dictionary : {};
+    return decryptKey(dictionary.oxfordAppKeyEnc);
+  }
+
   function get() {
     const stored = readStored();
     const clean = sanitize(stored);
     const key = storedKey(stored);
+    const oxfordKey = storedOxfordKey(stored);
     const local = isLocalBaseUrl(clean.ai.baseUrl);
     return {
       ai: {
@@ -218,12 +234,19 @@ function createSettingsService(options) {
       translation: clean.translation,
       reader: clean.reader,
       general: clean.general,
+      dictionary: {
+        provider: clean.dictionary.provider,
+        oxfordAppId: clean.dictionary.oxfordAppId,
+        hasOxfordAppKey: Boolean(oxfordKey),
+        oxfordKeyHint: maskKey(oxfordKey),
+      },
     };
   }
 
   function getRaw() {
     const stored = readStored();
     const clean = sanitize(stored);
+    const oxfordKey = storedOxfordKey(stored);
     return {
       ai: {
         baseUrl: clean.ai.baseUrl,
@@ -236,6 +259,13 @@ function createSettingsService(options) {
       translation: clean.translation,
       reader: clean.reader,
       general: clean.general,
+      dictionary: {
+        provider: clean.dictionary.provider,
+        oxfordAppId: clean.dictionary.oxfordAppId,
+        oxfordAppKey: oxfordKey,
+        hasOxfordAppKey: Boolean(oxfordKey),
+        oxfordKeyHint: maskKey(oxfordKey),
+      },
     };
   }
 
@@ -244,6 +274,7 @@ function createSettingsService(options) {
     const stored = readStored();
     const current = sanitize(stored);
     const aiPatch = isPlainObject(incoming.ai) ? incoming.ai : {};
+    const dictPatch = isPlainObject(incoming.dictionary) ? incoming.dictionary : {};
 
     const merged = sanitize({
       ai: Object.assign({}, current.ai, {
@@ -254,9 +285,16 @@ function createSettingsService(options) {
       translation: deepMerge(current.translation, incoming.translation || {}),
       reader: deepMerge(current.reader, incoming.reader || {}),
       general: deepMerge(current.general, incoming.general || {}),
+      dictionary: deepMerge(current.dictionary, incoming.dictionary || {}),
     });
 
-    const next = { ai: merged.ai, translation: merged.translation, reader: merged.reader, general: merged.general };
+    const next = {
+      ai: merged.ai,
+      translation: merged.translation,
+      reader: merged.reader,
+      general: merged.general,
+      dictionary: merged.dictionary,
+    };
     const existing = isPlainObject(stored.ai) ? stored.ai : {};
     const clearRequested = aiPatch.clearApiKey === true || incoming.clearApiKey === true;
     const plainKey = typeof aiPatch.apiKey === 'string' ? aiPatch.apiKey.trim() : '';
@@ -270,6 +308,17 @@ function createSettingsService(options) {
     } else if (typeof existing.apiKey === 'string' && existing.apiKey) {
       // 迁移旧版本明文
       next.ai.apiKeyEnc = encryptKey(existing.apiKey);
+    }
+
+    const existingDict = isPlainObject(stored.dictionary) ? stored.dictionary : {};
+    const clearOxfordKey = dictPatch.clearOxfordKey === true || incoming.clearOxfordKey === true;
+    const plainOxfordKey = typeof dictPatch.oxfordAppKey === 'string' ? dictPatch.oxfordAppKey.trim() : '';
+    if (clearOxfordKey) {
+      // 明确清除牛津 App Key
+    } else if (plainOxfordKey) {
+      next.dictionary.oxfordAppKeyEnc = encryptKey(plainOxfordKey);
+    } else if (typeof existingDict.oxfordAppKeyEnc === 'string' && existingDict.oxfordAppKeyEnc) {
+      next.dictionary.oxfordAppKeyEnc = existingDict.oxfordAppKeyEnc;
     }
 
     store.write(next);

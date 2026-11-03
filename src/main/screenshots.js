@@ -197,6 +197,27 @@ async function runScreenshotFlow({ windows, mainWindow, services }) {
   await nav(win, '#/vocab', 1200);
   await capture(win, '04-vocabulary.png');
 
+  try {
+    await win.webContents.executeJavaScript(`(() => {
+      const row = document.querySelector('.vocab-row');
+      if (row) row.click();
+      return Boolean(row);
+    })()`);
+    await win.webContents.executeJavaScript(`(async () => {
+      for (let i = 0; i < 40; i += 1) {
+        const drawer = document.querySelector('#vocab-drawer');
+        const lex = drawer && drawer.querySelector('#vd-lexicon');
+        if (drawer && drawer.classList.contains('is-open') && lex && lex.getAttribute('data-loading') === 'false') return true;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return true;
+    })()`);
+    await capture(win, '10-vocabulary-memory.png');
+    await win.webContents.executeJavaScript("document.querySelector('#vocab-drawer [data-vd=\"close\"]')?.click(); true");
+  } catch (err) {
+    console.error('[vocab drawer shot]', err);
+  }
+
   await nav(win, '#/review', 1200);
   await capture(win, '05-review.png');
 
@@ -205,6 +226,21 @@ async function runScreenshotFlow({ windows, mainWindow, services }) {
 
   await nav(win, '#/settings', 1000);
   await capture(win, '07-settings.png');
+
+  try {
+    const scrolled = await win.webContents.executeJavaScript(`(() => {
+      const card = Array.from(document.querySelectorAll('.settings-card')).find((el) => (el.getAttribute('aria-label') || '') === '词典');
+      if (!card) return false;
+      card.scrollIntoView({ block: 'start', behavior: 'instant' });
+      return true;
+    })()`);
+    if (scrolled) {
+      await sleep(700);
+      await capture(win, '11-settings-dictionary.png');
+    }
+  } catch (err) {
+    console.error('[dictionary settings shot]', err);
+  }
 
   // Quick panel screenshot (best-effort; free translation may be unavailable).
   try {

@@ -482,16 +482,69 @@ function translationSectionHtml(st, L) {
     '</section>';
 }
 
+function dictChipRow(label, values, max) {
+  if (!Array.isArray(values) || !values.length) return '';
+  return '<div class="dict-relations"><span class="dict-relations-label">' + label + '</span>' +
+    values.slice(0, max || 6).map((item) => '<span class="dict-relation">' + esc(item) + '</span>').join('') +
+    '</div>';
+}
+
 function dictionarySectionHtml(L) {
   const dictionary = L.result && L.result.dictionary;
   if (!dictionary || !Array.isArray(dictionary.meanings) || !dictionary.meanings.length) return '';
-  const items = dictionary.meanings.slice(0, 4).map((meaning) =>
-    '<div class="dict-item"><span class="dict-pos">' + esc(meaning.partOfSpeech || 'def') + '</span>' +
-    '<div><div class="dict-text">' + esc(meaning.definition || '') + '</div>' +
-    (meaning.example ? '<div class="dict-example">“' + esc(meaning.example) + '”</div>' : '') +
-    '</div></div>').join('');
-  return '<section class="lookup-section"><div class="lookup-label">' + icons.book(12) + '词典释义</div>' +
-    '<div class="dict-list">' + items + '</div></section>';
+  const source = dictionary.sourceLabel || (dictionary.source === 'oxford' ? '牛津词典' : (dictionary.source === 'free' ? '开放词典' : '词典'));
+  const items = dictionary.meanings.slice(0, 5).map((meaning) => {
+    const syn = Array.isArray(meaning.synonyms) ? meaning.synonyms : [];
+    const ant = Array.isArray(meaning.antonyms) ? meaning.antonyms : [];
+    return '<div class="dict-item"><span class="dict-pos">' + esc(meaning.partOfSpeech || 'def') + '</span>' +
+      '<div class="dict-item-body"><div class="dict-text">' + esc(meaning.definition || '') + '</div>' +
+      (meaning.example ? '<div class="dict-example">“' + esc(meaning.example) + '”</div>' : '') +
+      (syn.length ? dictChipRow('近义', syn, 4) : '') +
+      (ant.length ? dictChipRow('反义', ant, 4) : '') +
+      '</div></div>';
+  }).join('');
+  const forms = Array.isArray(dictionary.forms) && dictionary.forms.length
+    ? '<div class="dict-relations"><span class="dict-relations-label">词形</span>' +
+      dictionary.forms.slice(0, 6).map((form) => '<span class="dict-relation">' + esc(typeof form === 'string' ? form : form.form || '') + '</span>').join('') + '</div>'
+    : '';
+  const origin = dictionary.origin
+    ? '<div class="dict-origin"><span>词源</span><p>' + esc(dictionary.origin) + '</p></div>'
+    : '';
+  return '<section class="lookup-section lookup-section--dictionary">' +
+    '<div class="lookup-label lookup-label--row">' + icons.book(12) + '词典释义' +
+      '<span class="dict-source">' + esc(source) + '</span></div>' +
+    '<div class="dict-list">' + items + '</div>' + forms +
+    dictChipRow('近义', dictionary.synonyms, 8) +
+    dictChipRow('反义', dictionary.antonyms, 8) +
+    origin + '</section>';
+}
+
+function lexiconSectionHtml(L) {
+  const lexicon = L.lexicon;
+  if (!lexicon) return '';
+  const parts = Array.isArray(lexicon.parts) ? lexicon.parts : [];
+  const rawBreakdown = typeof lexicon.breakdown === 'string' ? lexicon.breakdown.trim() : '';
+  const fallbackWord = String((lexicon.word || (L.result && (L.result.normalized || L.result.text)) || L.text || '')).trim().toLowerCase();
+  const meaningfulBreakdown = rawBreakdown && rawBreakdown.toLowerCase() !== fallbackWord;
+  if (!meaningfulBreakdown && !parts.length && !(lexicon.related && lexicon.related.length)) return '';
+  const expanded = Boolean(L.lexiconOpen);
+  const chips = parts.map((part) =>
+    '<span class="lexicon-part lexicon-part--' + esc(part.type || 'root') + '">' +
+      '<b>' + esc(part.text || '') + '</b><span>' + esc(part.meaning || '') + '</span></span>').join('');
+  const related = Array.isArray(lexicon.related) && lexicon.related.length
+    ? '<div class="lexicon-related">同根词：' + lexicon.related.slice(0, 8).map((item) => '<span class="chip static">' + esc(item) + '</span>').join('') + '</div>'
+    : '';
+  return '<section class="lookup-section lookup-section--lexicon">' +
+    '<button type="button" class="lexicon-head" data-act="lexicon-toggle" aria-expanded="' + expanded + '">' +
+      '<span class="lookup-label">' + icons.layers(12) + '词根词缀</span>' +
+      '<span class="lexicon-breakdown">' + esc(lexicon.breakdown || '拆解') + '</span>' +
+      '<span class="lexicon-toggle">' + (expanded ? '收起' : '展开') + '</span>' +
+    '</button>' +
+    (expanded ? '<div class="lexicon-body">' +
+      (chips ? '<div class="lexicon-parts">' + chips + '</div>' : '') +
+      related +
+      '</div>' : '') +
+    '</section>';
 }
 
 function aiResultHtml(analysis) {
@@ -499,6 +552,17 @@ function aiResultHtml(analysis) {
   if (analysis.sense) blocks.push('<div class="ai-block"><div class="ai-label">语境义</div><div class="ai-text">' + esc(analysis.sense) + '</div></div>');
   if (analysis.grammar) blocks.push('<div class="ai-block"><div class="ai-label">语法结构</div><div class="ai-text">' + esc(analysis.grammar) + '</div></div>');
   if (analysis.nuance) blocks.push('<div class="ai-block"><div class="ai-label">语气与搭配</div><div class="ai-text">' + esc(analysis.nuance) + '</div></div>');
+  if (Array.isArray(analysis.roots) && analysis.roots.length) {
+    blocks.push('<div class="ai-block"><div class="ai-label">词根词缀</div><div class="ai-roots">' +
+      analysis.roots.slice(0, 8).map((root) => '<span class="ai-root"><b>' + esc(root.text || '') + '</b>' + esc(root.meaning || '') + '</span>').join('') + '</div></div>');
+  }
+  if (analysis.mnemonic) {
+    blocks.push('<div class="ai-block ai-block--mnemonic"><div class="ai-label">联想记忆</div>' +
+      '<div class="ai-text">' + esc(analysis.mnemonic) + '</div>' +
+      (Array.isArray(analysis.associations) && analysis.associations.length
+        ? '<div class="ai-associations">' + analysis.associations.slice(0, 5).map((item) => '<span class="chip static">' + esc(item) + '</span>').join('') + '</div>'
+        : '') + '</div>');
+  }
   if (Array.isArray(analysis.collocations) && analysis.collocations.length) {
     blocks.push('<div class="ai-block"><div class="ai-label">常见搭配</div><div class="ai-collocations">' +
       analysis.collocations.slice(0, 10).map((item) => '<span class="chip static">' + esc(item) + '</span>').join('') + '</div></div>');
@@ -586,6 +650,7 @@ function lookupHtml(st, L) {
   } else {
     body += translationSectionHtml(st, L);
     body += dictionarySectionHtml(L);
+    body += lexiconSectionHtml(L);
     body += aiSectionHtml(st, L);
     if (result.note) {
       body += '<div class="lookup-inline-note">' + icons.note(14) + '<span>' + esc(result.note) + '</span></div>';
@@ -968,6 +1033,18 @@ function rebuildVocabIndex(st) {
   });
 }
 
+function hydrateLexicon(st, lookup, reqId) {
+  const result = lookup && lookup.result;
+  if (!result || result.kind !== 'word' || lookup.lexicon) return;
+  const word = String(result.normalized || result.text || lookup.text || '').trim();
+  if (!word || !st.ctx.api || !st.ctx.api.lookup || typeof st.ctx.api.lookup.lexicon !== 'function') return;
+  st.ctx.api.lookup.lexicon(word).then((lexicon) => {
+    if (!lexicon || !st.lookup || st.lookup.reqId !== reqId) return;
+    st.lookup.lexicon = lexicon;
+    renderLookup(st);
+  }).catch(() => {});
+}
+
 function hydrateDictionary(st, lookup, reqId) {
   const result = lookup && lookup.result;
   if (!result || result.kind !== 'word') return;
@@ -1014,6 +1091,7 @@ async function openLookup(st, options) {
     noteOpen: false,
     noteColor: 'amber',
     selectionExpanded: false,
+    lexiconOpen: false,
     autoSave: Boolean(options.autoSave)
   };
   st.lookup = lookup;
@@ -1030,6 +1108,7 @@ async function openLookup(st, options) {
     lookup.result = result || null;
     renderLookup(st);
     hydrateDictionary(st, lookup, reqId);
+    hydrateLexicon(st, lookup, reqId);
     if (lookup.autoSave) {
       if (lookup.result && lookup.result.translation) await saveLookupWord(st);
       else st.ctx.toast('翻译尚未就绪，无法收藏', 'warn');
@@ -1780,6 +1859,11 @@ function onRootClick(st, event) {
       'selection-toggle': () => {
         if (!st.lookup) return;
         st.lookup.selectionExpanded = !st.lookup.selectionExpanded;
+        renderLookup(st);
+      },
+      'lexicon-toggle': () => {
+        if (!st.lookup) return;
+        st.lookup.lexiconOpen = !st.lookup.lexiconOpen;
         renderLookup(st);
       },
       'lookup-save': () => saveLookupWord(st),

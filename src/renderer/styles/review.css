@@ -14,6 +14,11 @@
   font-family: var(--font-ui);
 }
 
+/* 复习进行中：为右侧记忆曲线让出空间（窄屏自动回落单列） */
+@media (min-width: 1121px) {
+  .review-page.is-wide { max-width: 1080px; }
+}
+
 /* ---- 页头 ---------------------------------------------------------------- */
 .review-head {
   display: flex;
@@ -126,6 +131,220 @@
   flex-direction: column;
   gap: 13px;
   justify-content: flex-start;
+}
+
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.review-layout.has-side { grid-template-columns: minmax(0, 1fr) 286px; }
+
+.review-layout[hidden],
+.review-side[hidden] { display: none; }
+
+.review-layout:not(.has-side) .review-main {
+  width: 100%;
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+.review-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.review-side {
+  min-width: 0;
+  position: sticky;
+  top: 14px;
+}
+
+/* ---- 记忆曲线卡片 -------------------------------------------------------- */
+.memory-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 16px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.memory-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.memory-card__titles { min-width: 0; }
+
+.memory-card__eyebrow {
+  margin: 0;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.memory-card__title {
+  margin: 4px 0 0;
+  font-family: var(--font-read);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.memory-card__toggle {
+  appearance: none;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease, transform 180ms ease;
+}
+
+.memory-card__toggle:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+}
+
+.memory-card__toggle svg { width: 15px; height: 15px; transition: transform 200ms var(--ease); }
+.memory-card.is-collapsed .memory-card__toggle svg { transform: rotate(-90deg); }
+
+.memory-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memory-card.is-collapsed .memory-card__body { display: none; }
+
+.memory-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.memory-chart__grid {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.memory-chart__base {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.memory-chart__area { opacity: 0.9; }
+
+.memory-chart__stop-top { stop-color: var(--accent); stop-opacity: 0.26; }
+.memory-chart__stop-bottom { stop-color: var(--accent); stop-opacity: 0; }
+
+.memory-chart__curve {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.memory-chart__dot {
+  fill: var(--card);
+  stroke: color-mix(in srgb, var(--muted) 52%, transparent);
+  stroke-width: 1.1;
+  transition: fill 180ms ease, stroke 180ms ease;
+}
+
+.memory-chart__dot.is-past {
+  fill: color-mix(in srgb, var(--accent) 58%, var(--card));
+  stroke: none;
+}
+
+.memory-chart__dot.is-current {
+  fill: var(--accent);
+  stroke: var(--card);
+  stroke-width: 2;
+}
+
+.memory-chart__halo {
+  fill: var(--accent);
+  opacity: 0.16;
+  transition: cx 240ms var(--ease), cy 240ms var(--ease);
+}
+
+.memory-chart__marker {
+  fill: var(--accent);
+  stroke: var(--card);
+  stroke-width: 1.6;
+  transition: cx 240ms var(--ease), cy 240ms var(--ease);
+}
+
+.memory-chart__axis {
+  fill: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+}
+
+.memory-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 2px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.memory-stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.memory-stat:last-child { border-bottom: 0; padding-bottom: 2px; }
+
+.memory-stat dt {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.memory-stat dd {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.memory-card__note {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--muted);
 }
 
 /* ---- 卡片 ---------------------------------------------------------------- */
@@ -647,7 +866,118 @@
   50% { opacity: 0.45; }
 }
 
+/* ---- 完成页：阶段分布 ---------------------------------------------------- */
+.review-dist {
+  width: 100%;
+  max-width: 440px;
+  margin: 6px auto 2px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card-soft);
+  text-align: left;
+}
+
+.review-dist__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+}
+
+.review-dist__title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.review-dist__total {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.review-dist__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-dist__row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 10px;
+}
+
+.review-dist__label {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.review-dist__track {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.review-dist__bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--sage), var(--accent));
+  transition: width 320ms cubic-bezier(0.22, 0.7, 0.3, 1);
+}
+
+.review-dist__count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.review-dist__note {
+  margin: 9px 0 0;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
 /* ---- 响应式 -------------------------------------------------------------- */
+@media (max-width: 1120px) {
+  .review-layout.has-side { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .review-side { position: static; }
+  .memory-card { padding: 15px 16px 13px; }
+  .memory-chart { max-width: 420px; margin: 0 auto; }
+  .memory-stats {
+    flex-direction: row;
+    border-top: 1px solid var(--line);
+    margin-top: 6px;
+  }
+  .memory-stat {
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    padding: 9px 12px;
+    border-bottom: 0;
+    border-right: 1px solid var(--line);
+  }
+  .memory-stat:last-child { border-right: 0; padding-bottom: 9px; }
+  .memory-stat dd { text-align: left; font-size: 12.5px; }
+}
+
 @media (max-width: 720px) {
   .review-title { font-size: 30px; }
   .review-stage { min-height: 0; }
@@ -663,13 +993,26 @@
   .review-finish__stats { width: 100%; }
   .review-finish__stat { flex: 1; padding: 10px 8px; }
   .review-head-top { align-items: flex-start; }
+  .review-layout { gap: 12px; }
+  .memory-card { padding: 14px 14px 12px; }
+  .memory-chart { max-width: 100%; }
+  .memory-stat { padding: 8px 9px; }
+  .memory-stat dd { font-size: 11.5px; }
+  .review-dist { padding: 12px 13px 10px; }
+  .review-dist__row { grid-template-columns: 60px minmax(0, 1fr) 26px; gap: 8px; }
+  .review-dist__label { font-size: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .flashcard,
   .review-progress__bar,
   .review-rating,
-  .rating-btn {
+  .rating-btn,
+  .memory-card__toggle svg,
+  .memory-chart__marker,
+  .memory-chart__halo,
+  .memory-chart__dot,
+  .review-dist__bar {
     transition: none !important;
   }
 

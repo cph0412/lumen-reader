@@ -69,35 +69,230 @@ test('vocab: list 过滤与排序', function (t) {
   });
 });
 
-test('vocab: SRS 四档评分', function (t) {
+test('vocab: Ebbinghaus 四档评分（stage/interval/due/srs 同步）', function (t) {
   const ctx = makeService(t);
+  const HOUR_MS = 60 * 60 * 1000;
+
   const again = ctx.service.review(ctx.service.add({ word: 'again-word' }).word.id, 'again');
+  assert.equal(again.memory.stage, 0);
+  assert.equal(again.memory.intervalHours, 1 / 12);
+  assert.equal(again.memory.lastRating, 'again');
+  assert.equal(again.memory.lapses, 1);
+  assert.equal(again.memory.history.length, 1);
+  assert.deepEqual(again.memory.history[0].rating, 'again');
   assert.equal(again.srs.reps, 1);
   assert.equal(again.srs.lapses, 1);
   assert.equal(again.mastery, 0);
   near(again.srs.ease, 2.35, 1e-9);
-  near(again.srs.interval, 10 / (24 * 60), 1e-6);
-  near(Date.parse(again.srs.due), Date.now() + 10 * 60 * 1000, 2 * 60 * 1000);
+  near(again.srs.interval, (1 / 12) / 24, 1e-6);
+  near(Date.parse(again.srs.due), Date.now() + (1 / 12) * HOUR_MS, 2 * 60 * 1000);
+  assert.equal(again.srs.due, again.memory.due, 'srs.due 必须与 memory.due 同步');
 
   const hard = ctx.service.review(ctx.service.add({ word: 'hard-word' }).word.id, 'hard');
-  assert.equal(hard.srs.interval, 1);
+  assert.equal(hard.memory.stage, 0);
+  assert.equal(hard.memory.intervalHours, 1 / 12);
   near(hard.srs.ease, 2.35, 1e-9);
   assert.equal(hard.mastery, 0);
-  near(Date.parse(hard.srs.due), Date.now() + DAY_MS, 5 * 60 * 1000);
+  near(Date.parse(hard.srs.due), Date.now() + (1 / 12) * HOUR_MS, 2 * 60 * 1000);
 
   const goodWord = ctx.service.add({ word: 'good-word' }).word;
   const good = ctx.service.review(goodWord.id, 'good');
-  assert.equal(good.srs.interval, 1);
+  assert.equal(good.memory.stage, 1);
+  assert.equal(good.memory.intervalHours, 0.5);
+  near(good.srs.interval, 0.5 / 24, 1e-6);
   near(good.srs.ease, 2.5, 1e-9);
   assert.equal(good.mastery, 1);
+  near(Date.parse(good.srs.due), Date.now() + 0.5 * HOUR_MS, 2 * 60 * 1000);
+
   const good2 = ctx.service.review(goodWord.id, 'good');
-  assert.equal(good2.srs.interval, 2.5);
+  assert.equal(good2.memory.stage, 2);
+  assert.equal(good2.memory.intervalHours, 12);
+  near(good2.srs.interval, 0.5, 1e-6);
   assert.equal(good2.mastery, 2);
+  assert.equal(good2.memory.history.length, 2);
 
   const easy = ctx.service.review(ctx.service.add({ word: 'easy-word' }).word.id, 'easy');
-  assert.equal(easy.srs.interval, 2);
+  assert.equal(easy.memory.stage, 2);
+  assert.equal(easy.memory.intervalHours, 12);
+  near(easy.srs.interval, 0.5, 1e-6);
   near(easy.srs.ease, 2.65, 1e-9);
   assert.equal(easy.mastery, 2);
+  near(Date.parse(easy.srs.due), Date.now() + 12 * HOUR_MS, 5 * 60 * 1000);
+});
+
+test('vocab: Ebbinghaus 评分在已有阶段上的升降级', function (t) {
+  const ctx = makeService(t);
+  const word = ctx.service.add({ word: 'stage-walk' }).word;
+  for (let i = 0; i < 3; i += 1) ctx.service.review(word.id, 'good');
+  assert.equal(ctx.service.isSaved('stage-walk').memory.stage, 3);
+
+  const hard = ctx.service.review(word.id, 'hard');
+  assert.equal(hard.memory.stage, 2);
+  assert.equal(hard.memory.intervalHours, 12);
+
+  const good = ctx.service.review(word.id, 'good');
+  assert.equal(good.memory.stage, 3);
+  assert.equal(good.memory.intervalHours, 24);
+
+  const easy = ctx.service.review(word.id, 'easy');
+  assert.equal(easy.memory.stage, 5);
+  assert.equal(easy.memory.intervalHours, 96);
+
+  const again = ctx.service.review(word.id, 'again');
+  assert.equal(again.memory.stage, 0);
+  assert.equal(again.memory.intervalHours, 1 / 12);
+  assert.equal(again.memory.lapses, 1);
+  assert.deepEqual(again.memory.history.map(function (item) { return item.rating; }), ['good', 'good', 'good', 'hard', 'good', 'easy', 'again']);
+});
+
+test('vocab: Ebbinghaus 阶段上限 10，history 保留最近 30 条', function (t) {
+  const ctx = makeService(t);
+  const word = ctx.service.add({ word: 'max-stage' }).word;
+  let current = null;
+  for (let i = 0; i < 35; i += 1) current = ctx.service.review(word.id, 'easy');
+  assert.equal(current.memory.stage, 10);
+  assert.equal(current.memory.intervalHours, 2880);
+  assert.equal(current.srs.interval, 2880 / 24);
+  const persisted = ctx.service.isSaved('max-stage');
+  assert.equal(persisted.memory.stage, 10);
+  assert.equal(persisted.memory.history.length, 30);
+  assert.equal(persisted.memory.history[29].stage, 10);
+  assert.ok(!Number.isNaN(Date.parse(persisted.memory.due)));
+});
+
+test('vocab: 新记录默认 memory 结构与 srs.due 同步', function (t) {
+  const ctx = makeService(t);
+  const word = ctx.service.add({ word: 'memory-default' }).word;
+  assert.equal(word.memory.stage, 0);
+  assert.equal(word.memory.intervalHours, 1 / 12);
+  assert.equal(word.memory.lapses, 0);
+  assert.deepEqual(word.memory.history, []);
+  assert.equal(word.memory.lastRating, undefined);
+  assert.equal(word.srs.interval, 0);
+  assert.equal(word.srs.due, word.memory.due);
+  assert.ok(!Number.isNaN(Date.parse(word.memory.due)));
+});
+
+test('vocab: 旧数据迁移（无 memory 时按 mastery/reps 估算 stage，due 保持）', function (t) {
+  const ctx = makeService(t);
+  const due = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+  const legacy = {
+    words: [
+      {
+        id: 'v_legacy_1',
+        word: 'legacy',
+        normalized: 'legacy',
+        translation: '旧词',
+        createdAt: new Date(Date.now() - DAY_MS).toISOString(),
+        updatedAt: new Date().toISOString(),
+        srs: { due: due, interval: 2, ease: 2.5, reps: 4, lapses: 1 },
+        mastery: 3,
+      },
+      {
+        id: 'v_legacy_2',
+        word: 'fresh',
+        normalized: 'fresh',
+        translation: '新词',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        srs: { due: new Date().toISOString(), interval: 0, ease: 2.5, reps: 0, lapses: 0 },
+        mastery: 0,
+      },
+    ],
+    reviewDays: {},
+  };
+  fs.writeFileSync(path.join(ctx.dataDir, 'vocab.json'), JSON.stringify(legacy), 'utf8');
+
+  const words = ctx.service.list({ sort: 'alpha' });
+  assert.equal(words.length, 2);
+  const migrated = words.find(function (item) { return item.normalized === 'legacy'; });
+  assert.equal(migrated.memory.stage, 6);
+  assert.equal(migrated.memory.intervalHours, 168);
+  assert.equal(migrated.memory.due, due, '迁移时 due 必须保持');
+  assert.equal(migrated.srs.due, due);
+  assert.equal(migrated.memory.lapses, 1);
+  assert.deepEqual(migrated.memory.history, []);
+
+  const fresh = words.find(function (item) { return item.normalized === 'fresh'; });
+  assert.equal(fresh.memory.stage, 0);
+  assert.equal(fresh.memory.intervalHours, 1 / 12);
+
+  const reviewed = ctx.service.review('v_legacy_1', 'again');
+  assert.equal(reviewed.memory.stage, 0);
+  assert.equal(reviewed.memory.lapses, 2);
+  assert.equal(reviewed.srs.lapses, 2);
+});
+
+test('vocab: schedule 返回完整艾宾浩斯间隔', function (t) {
+  const ctx = makeService(t);
+  const schedule = ctx.service.schedule();
+  assert.equal(schedule.maxStage, 10);
+  assert.equal(schedule.intervals.length, 11);
+  assert.deepEqual(schedule.intervals.map(function (item) { return item.stage; }), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.deepEqual(schedule.intervals.map(function (item) { return item.hours; }), [1 / 12, 0.5, 12, 24, 48, 96, 168, 360, 720, 1440, 2880]);
+  assert.deepEqual(schedule.intervals.map(function (item) { return item.label; }), ['5分钟', '30分钟', '12小时', '1天', '2天', '4天', '7天', '15天', '30天', '60天', '120天']);
+});
+
+test('vocab: stats 增加 stages 分布且总和等于 total', function (t) {
+  const ctx = makeService(t);
+  const a = ctx.service.add({ word: 'stage-a' }).word;
+  const b = ctx.service.add({ word: 'stage-b' }).word;
+  ctx.service.add({ word: 'stage-c' });
+  ctx.service.review(a.id, 'good');
+  ctx.service.review(b.id, 'easy');
+  const stats = ctx.service.stats();
+  assert.equal(stats.stages.length, 11);
+  assert.equal(stats.stages[0], 1);
+  assert.equal(stats.stages[1], 1);
+  assert.equal(stats.stages[2], 1);
+  assert.equal(stats.stages.reduce(function (sum, count) { return sum + count; }, 0), stats.total);
+  assert.equal(stats.total, 3);
+});
+
+test('vocab: 保留并持久化 mnemonic / associations / lexicon', function (t) {
+  const ctx = makeService(t);
+  const added = ctx.service.add({
+    word: 'spectator',
+    translation: '观众',
+    mnemonic: 'spect 看 + ator 人',
+    associations: ['聚光灯', '聚光灯', '看台'],
+    lexicon: {
+      word: 'spectator',
+      breakdown: 'spect（看） + -ator（人）',
+      parts: [
+        { text: 'spect', type: 'root', meaning: '看' },
+        { text: '-ator', type: 'suffix', meaning: '人' },
+        { text: '', type: 'root', meaning: '空文本过滤' },
+      ],
+      related: ['inspect', 'respect'],
+      source: 'local',
+    },
+  }).word;
+  assert.equal(added.mnemonic, 'spect 看 + ator 人');
+  assert.deepEqual(added.associations, ['聚光灯', '看台']);
+  assert.equal(added.lexicon.breakdown, 'spect（看） + -ator（人）');
+  assert.equal(added.lexicon.parts.length, 2);
+  assert.equal(added.lexicon.source, 'local');
+
+  const updated = ctx.service.update(added.id, {
+    mnemonic: '换成新的联想',
+    associations: ['新联想'],
+    lexicon: { word: 'spectator', breakdown: 'spect（看）', parts: [{ text: 'spect', type: 'root', meaning: '看' }], related: [] },
+  });
+  assert.equal(updated.mnemonic, '换成新的联想');
+  assert.deepEqual(updated.associations, ['新联想']);
+  assert.equal(updated.lexicon.breakdown, 'spect（看）');
+
+  const reopened = createVocabService({ dataDir: ctx.dataDir });
+  const persisted = reopened.isSaved('spectator');
+  assert.equal(persisted.mnemonic, '换成新的联想');
+  assert.deepEqual(persisted.associations, ['新联想']);
+  assert.equal(persisted.lexicon.parts[0].meaning, '看');
+
+  const cleared = reopened.update(persisted.id, { mnemonic: '', associations: [], lexicon: null });
+  assert.equal(cleared.mnemonic, undefined);
+  assert.equal(cleared.associations, undefined);
+  assert.equal(cleared.lexicon, undefined);
 });
 
 test('vocab: mastery 上限 5，ease 范围限制', function (t) {
