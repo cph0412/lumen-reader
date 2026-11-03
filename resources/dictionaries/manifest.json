@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "createdAt": "2026-11-03T07:18:55.108Z",
+  "total": 90352,
+  "sources": {
+    "cigen": 88167,
+    "toefl": 9213,
+    "buze": 7451
+  },
+  "shards": [
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f",
+    "g",
+    "h",
+    "i",
+    "j",
+    "k",
+    "l",
+    "m",
+    "n",
+    "o",
+    "p",
+    "q",
+    "r",
+    "s",
+    "t",
+    "u",
+    "v",
+    "w",
+    "x",
+    "y",
+    "z"
+  ],
+  "note": "Built from user-provided local dictionary datasets. Keep source attribution with the project."
+}

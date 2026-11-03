@@ -991,6 +991,21 @@
 .dict-origin { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
 .dict-origin span { font-size: 9px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .dict-origin p { margin: 3px 0 0; font-size: 11px; line-height: 1.65; color: var(--muted); }
+.dict-def-en { margin-top: 3px; font-size: 10.5px; line-height: 1.6; color: var(--muted); }
+.dict-example-list { margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.dict-example-row { margin-top: 6px; }
+.dict-example-row .en { font-family: var(--font-read); font-size: 11.5px; line-height: 1.65; color: var(--ink-soft); }
+.dict-example-row .zh { margin-top: 2px; font-size: 10.5px; color: var(--muted); }
+.dict-phrases { margin-top: 9px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; }
+.dict-phrase { display: inline-flex; align-items: baseline; gap: 4px; padding: 2px 6px; border-radius: 4px; background: var(--bg-soft); font-size: 10px; color: var(--ink-soft); }
+.dict-phrase b { font-family: var(--font-read); font-size: 11px; color: var(--ink); }
+.dict-memory { margin-top: 10px; padding: 8px 9px; border-radius: 6px; background: var(--bg-soft); }
+.dict-memory span { display: block; font-size: 9px; font-weight: 650; letter-spacing: 0.1em; color: var(--muted); }
+.dict-memory p { margin: 4px 0 0; font-size: 11px; line-height: 1.65; color: var(--ink-soft); }
+.dict-memory--mnemonic { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.dict-note-block { margin-top: 9px; }
+.dict-note-toggle { appearance: none; width: 100%; display: flex; justify-content: space-between; padding: 0; border: 0; background: transparent; color: var(--accent-deep); font-family: var(--font-ui); font-size: 10px; cursor: pointer; }
+.dict-note { margin: 7px 0 0; padding: 8px 9px; max-height: 180px; overflow: auto; border-radius: 6px; background: var(--bg-soft); color: var(--ink-soft); font-family: var(--font-ui); font-size: 10.5px; line-height: 1.7; white-space: pre-wrap; }
 
 /* 词根词缀 */
 .lookup-section--lexicon { padding-top: 0; }

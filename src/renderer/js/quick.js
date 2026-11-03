@@ -313,7 +313,9 @@
     if (!dictionary || !Array.isArray(dictionary.meanings) || !dictionary.meanings.length) return '';
     const meanings = dictionary.meanings.slice(0, 3).map((meaning) => {
       const partOfSpeech = meaning && meaning.partOfSpeech ? meaning.partOfSpeech : '·';
-      const definition = meaning && meaning.definition ? meaning.definition : '';
+      const definition = meaning && (meaning.definitionZh || meaning.definition)
+        ? (meaning.definitionZh || meaning.definition)
+        : '';
       const example = meaning && meaning.example
         ? '<span class="quick-dict-example">' + escapeHtml(meaning.example) + '</span>'
         : '';

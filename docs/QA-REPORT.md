@@ -12,7 +12,7 @@
 npm test
 ```
 
-结果：**111 passed / 0 failed**（node:test，约 0.6s）
+结果：**116 passed / 0 failed**（node:test，约 0.6s）
 
 覆盖：
 - 编码识别：UTF-8、UTF-8 BOM、UTF-16LE/BE、GB18030 回退、乱码比例
@@ -23,6 +23,7 @@ npm test
 - 生词 CRUD、normalized 去重、四档 SRS、due 排序、CSV 导出
 - 统计 streak / weekly / heatmap / 补录日期、笔记 CRUD
 - 词典：dictionaryapi、牛津 API mock、Oxford 凭证加密/清除、回退逻辑
+- 内置词典：90,352 词条、26 个分片、TOEFL 优先、词根/短语/联想、无网络优先命中
 - 词根词缀：本地 200+ 词素匹配、AI 联想 mnemonic 缓存与 NO_AI_KEY
 - 艾宾浩斯：11 阶段、四档升降级、due 同步、旧数据迁移、schedule
 - 示例书真实资源播种
@@ -33,7 +34,7 @@ npm test
 npm run selftest
 ```
 
-结果：**28 passed / 0 failed**
+结果：**29 passed / 0 failed**
 
 覆盖：
 1. 本地 AI 无 Key 可用（localhost）
@@ -64,6 +65,7 @@ npm run selftest
 26. 生词详情的记忆 / 词根抽屉
 27. 复习页艾宾浩斯曲线渲染
 28. 设置页词典与牛津凭证卡
+29. 内置 90k 词典命中（source=local）
 
 > 说明：自动化测试运行在远程会话中，Win32 合成输入偶发被系统限制，因此“helper 捕获文本”按“执行不挂起”验收；交互式桌面下已验证可捕获选中文本。
 
@@ -73,7 +75,7 @@ npm run selftest
 
 - `docs/screenshots/01-library.png` 书库 / 继续阅读 / CSS 书封
 - `02-reader.png` 沉浸阅读 / Literata / drop cap
-- `03-reader-lookup.png` 单词卡 / 音标 / 翻译 / 词典释义 / AI CTA
+- `03-reader-lookup.png` 单词卡 / 翻译 / 内置词典释义 / 词根展开 / AI CTA
 - `04-vocabulary.png` 生词表 / 搜索 / 筛选 / 掌握度
 - `05-review.png` 复习卡 / 来源 / 翻面
 - `06-stats.png` 统计卡 / 周柱状图 / 热力图 / 目标
@@ -92,12 +94,19 @@ npx electron-builder --win portable --x64
 ```
 
 产物：
-- `release/Lumen-1.1.0-portable.exe`（111,116,437 bytes，已写入 Lumen 图标与版本信息）
+- `release/Lumen-1.2.0-portable.exe`（130,600,112 bytes，已写入 Lumen 图标与版本信息）
 - `release/win-unpacked/Lumen.exe`
 
-启动验证：便携版进程启动，主窗口标题为“书库 · Lumen 流明阅读”；打包版 `--selftest` 28/28 通过。
+启动验证：便携版进程启动，主窗口标题为“书库 · Lumen 流明阅读”；打包版 `--selftest` 29/29 通过。
 
-## 4. 1.1 新增能力
+## 4. 1.2 内置词库
+
+- 合并 **cigen（88,167） + TOEFL（9,213） + 不择手段背单词（7,451）**，去重后 **90,352** 个词条。
+- 预生成 26 个按首字母拆分的 gzip JSONL 分片，运行时按需加载，离线可用；TOEFL 结构化释义优先，cigen/Bu_Ze 补充词根、短语与联想。
+- 划词卡新增中文释义、短语、词根/词源、联想记忆与可展开的详细记忆；来源标注为「内置词典」。
+- 牛津 API 显式选择时优先牛津；自动/免费模式优先内置，未收录时再联网。
+
+## 5. 1.1 新增能力
 
 - **增强词典**：开放词典返回音标、词性、释义、例句、同反义、词形、词源；可选牛津 API，无凭证/失败自动回退开放词典并标注来源。
 - **艾宾浩斯记忆曲线**：11 阶段间隔（5 分钟至 120 天），复习页曲线、阶段与四档实际间隔；旧数据自动迁移。
@@ -112,7 +121,7 @@ npx electron-builder --win portable --x64
 - **主界面进度不同步**：书库页挂载时强制读取最新 `library.list()`；阅读进度百分比统一为 0–100，旧版 0–1 数据在启动时自动迁移；已读完的书再次阅读时按真实进度显示，不被 `finished` 状态强行覆盖为 100%。
 - **段落翻译误报网络错误**：MyMemory 单次查询有约 500 字节上限。长段落现在按句子切块（≤420 字符）分别翻译后拼接，Google 失败时也不会整段报错。
 
-## 5. 已知边界
+## 6. 已知边界
 
 - 未做代码签名，SmartScreen 可能提示未知发布者；
 - 全局划词依赖前台窗口/剪贴板，受保护应用可能失败；
@@ -121,7 +130,7 @@ npx electron-builder --win portable --x64
 - 仅 TXT，EPUB/PDF/OCR 在路线图中；
 - 牛津词典需要用户自己的 API 凭证；无凭证时用免费开放词典。
 
-## 6. 复现命令
+## 7. 复现命令
 
 ```bash
 npm install

@@ -128,6 +128,8 @@ async function runSelfTest({ windows, mainWindow, services, hotkey }) {
     record('settings: local AI available without key', aiSettings.available === true && aiSettings.local === true, JSON.stringify({ hasApiKey: aiSettings.hasApiKey, local: aiSettings.local, available: aiSettings.available }));
 
     try {
+      const localEntry = await services.dictionary.lookup('abacus');
+      record('dictionary: built-in 90k entries', Boolean(localEntry && localEntry.source === 'local' && localEntry.meanings.some((item) => String(item.definitionZh).includes('算盘'))), JSON.stringify({ source: localEntry && localEntry.source, total: services.localDictionary && services.localDictionary.stats().total }).slice(0, 220));
       const lex = services.lexicon.analyze('unhappy');
       record('lexicon: local root/affix analysis', Boolean(lex && Array.isArray(lex.parts) && lex.parts.length > 0), JSON.stringify(lex).slice(0, 220));
       const mnemonic = await services.lexicon.mnemonic({ word: 'curious', translation: '好奇的' });

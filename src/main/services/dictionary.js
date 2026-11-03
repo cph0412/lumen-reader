@@ -341,6 +341,7 @@ function requestJson(fetchImpl, url, options) {
 function createDictionaryService(options) {
   const opts = options || {};
   const settings = opts.settings || null;
+  const localDictionary = opts.localDictionary || null;
   const fetchImpl = typeof opts.fetchImpl === 'function'
     ? opts.fetchImpl
     : (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
@@ -426,8 +427,35 @@ function createDictionaryService(options) {
     const config = readConfig();
     let result = null;
     let fallbackFrom = '';
+    let oxfordTried = false;
 
-    if (config.useOxford) {
+    // If the user explicitly chose Oxford, try it before the bundled data.
+    if (config.oxfordRequested && config.hasOxford) {
+      oxfordTried = true;
+      try {
+        result = await fetchOxford(key, config.appId, config.appKey);
+      } catch (err) {
+        result = null;
+      }
+      if (!result) fallbackFrom = 'oxford';
+    }
+
+    // Bundled user-provided dictionaries next: offline, with Chinese
+    // translations, TOEFL examples/roots and GRE mnemonics.
+    if (!result && localDictionary && typeof localDictionary.lookup === 'function') {
+      try {
+        const local = await localDictionary.lookup(key);
+        if (local) {
+          if (fallbackFrom) local.fallbackFrom = fallbackFrom;
+          remember(key, local);
+          return clone(local);
+        }
+      } catch (err) {
+        // A broken local shard must not block the online fallback.
+      }
+    }
+
+    if (!result && !oxfordTried && config.useOxford) {
       try {
         result = await fetchOxford(key, config.appId, config.appKey);
       } catch (err) {
@@ -453,6 +481,14 @@ function createDictionaryService(options) {
 
   async function testDictionary() {
     const config = readConfig();
+    const preferOxford = config.oxfordRequested && config.hasOxford;
+    if (!preferOxford && localDictionary && typeof localDictionary.lookup === 'function') {
+      const local = localDictionary.lookup('hello');
+      if (local) {
+        const localStats = typeof localDictionary.stats === 'function' ? localDictionary.stats() : null;
+        return { ok: true, provider: 'local', message: '内置词典可用' + (localStats && localStats.total ? '（' + localStats.total + ' 词条）' : '') };
+      }
+    }
     const target = config.useOxford || config.oxfordRequested ? 'oxford' : 'free';
     const result = await lookup('hello', { noCache: true });
     if (!result) {
@@ -487,6 +523,7 @@ function createDictionaryService(options) {
     cacheSize: function () { return cache.size; },
     config: readConfig,
     cache: cache,
+    localDictionary: localDictionary,
   };
 }
 

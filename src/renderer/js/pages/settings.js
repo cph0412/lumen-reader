@@ -51,9 +51,9 @@ const PROVIDERS = [
 ];
 
 const DICTIONARY_PROVIDERS = [
-  { value: 'auto', title: '自动', desc: '有牛津凭证时用牛津，否则用开放词典' },
-  { value: 'free', title: '开放词典', desc: 'dictionaryapi.dev，免费无需凭证' },
-  { value: 'oxford', title: '牛津 API', desc: '牛津商业词典，需自己的 App ID / Key' }
+  { value: 'auto', title: '自动', desc: '内置优先，未收录再联网' },
+  { value: 'free', title: '开放词典', desc: '内置优先，未收录用 dictionaryapi.dev' },
+  { value: 'oxford', title: '牛津 API', desc: '牛津优先，需自己的 App ID / Key' }
 ];
 
 const THEMES = [
@@ -133,9 +133,9 @@ function aiStatusLabel(ai) {
 
 function dictionaryStatus(dict) {
   if (!dict) return '未配置';
-  if (dict.provider === 'free') return '开放词典';
+  if (dict.provider === 'free') return '内置 + 开放词典';
   if (dict.provider === 'oxford') return dict.hasOxfordAppKey ? '牛津 API' : '缺少凭证';
-  return dict.hasOxfordAppKey ? '自动 · 牛津优先' : '自动 · 开放词典';
+  return dict.hasOxfordAppKey ? '自动 · 内置 + 牛津' : '自动 · 内置优先';
 }
 
 function dictionaryStatusTone(dict) {
@@ -146,16 +146,16 @@ function dictionaryStatusTone(dict) {
 function dictionaryProviderHint(dict) {
   if (!dict) return '';
   if (dict.provider === 'free') {
-    return '当前固定使用开放词典 dictionaryapi.dev；牛津凭证会保存，但不会参与查询。';
+    return '内置词典优先；未收录时使用开放词典 dictionaryapi.dev。牛津凭证会保存，但不会参与查询。';
   }
   if (dict.provider === 'oxford') {
     return dict.hasOxfordAppKey
-      ? '当前使用牛津 API；请求失败时会提示错误，不会静默换成其他词典。'
-      : '已选择牛津 API，但还没有 App Key；查询与测试都会失败，请先填写凭证。';
+      ? '牛津 API 优先；失败时回退内置词典或开放词典。'
+      : '已选择牛津 API，但还没有 App Key；查询会回退内置词典或开放词典，请先填写凭证。';
   }
   return dict.hasOxfordAppKey
-    ? '已有牛津凭证，查询优先走牛津；失败时回退到开放词典。'
-    : '还没有牛津凭证，当前使用开放词典；填入凭证后会自动优先牛津。';
+    ? '内置词典优先；未收录时用牛津 API，再失败回退开放词典。'
+    : '内置词典优先；未收录时使用开放词典。填入牛津凭证后，会先查牛津。';
 }
 
 function normalizeKey(raw) {
@@ -542,7 +542,7 @@ export async function render(root, ctx) {
     return '<section class="settings-card" aria-label="词典">' +
       '<div class="settings-card-head">' +
         '<span class="settings-card-icon settings-card-icon--sage">' + icon(ctx, 'book', 17) + '</span>' +
-        '<div class="settings-card-copy"><h2>词典</h2><p>生词详情与划词卡使用的词典来源；开放词典免费，牛津 API 需要你自己的商业凭证。</p></div>' +
+        '<div class="settings-card-copy"><h2>词典</h2><p>内置约 9 万词条（cigen / TOEFL / 不择手段）优先、离线可用；未收录时用开放词典，牛津 API 需要你自己的商业凭证。</p></div>' +
         '<span class="settings-card-status' + dictionaryStatusTone(dict) + '" id="dict-status">' + esc(dictionaryStatus(dict)) + '</span>' +
       '</div>' +
       '<div class="settings-body">' +

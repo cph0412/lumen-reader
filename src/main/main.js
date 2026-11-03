@@ -12,6 +12,7 @@ const { createSettingsService } = require('./services/settings');
 const { createLibraryService } = require('./services/library');
 const { createTranslationService } = require('./services/translator');
 const { createDictionaryService } = require('./services/dictionary');
+const { createLocalDictionaryService } = require('./services/local-dictionary');
 const { createLexiconService } = require('./services/lexicon');
 const { createVocabService } = require('./services/vocab');
 const { createNotesService } = require('./services/notes');
@@ -99,14 +100,15 @@ async function boot() {
     console.error('[samples]', err);
   }
   const translator = createTranslationService({ settings });
-  const dictionary = createDictionaryService({ settings });
+  const localDictionary = createLocalDictionaryService({ dictionaryDir: resourcePath('dictionaries') });
+  const dictionary = createDictionaryService({ settings, localDictionary });
   const lexicon = createLexiconService({ settings, dataDir });
   const vocab = createVocabService({ dataDir });
   const notes = createNotesService({ dataDir });
   const stats = createStatsService({ dataDir });
   const historyStore = createJsonStore({ filePath: path.join(dataDir, 'history.json'), defaults: { items: [] } });
 
-  services = { dataDir, settings, library, translator, dictionary, lexicon, vocab, notes, stats, historyStore };
+  services = { dataDir, settings, library, translator, dictionary, localDictionary, lexicon, vocab, notes, stats, historyStore };
 
   windows = new WindowManager({
     preloadPath: path.join(__dirname, 'preload.js'),

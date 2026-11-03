@@ -54,7 +54,9 @@ Lumen 把一次划词拆成三层：**先翻译（通常 1–3 秒）→ 再看�
 
 ### 划词翻译与词典
 - 选中单词/句子，浮卡自动出现；单词给音标、真人发音（Windows TTS）；
-- 词典释义更完整：词性、英文释义、例句、近义词 / 反义词、词形、词源；默认使用开放词典 dictionaryapi.dev；
+- 词典释义更完整：词性、中英释义、例句、近义词 / 反义词、词形、词源、短语；
+- **内置约 9 万词条离线词典**：合并 cigen 词根记忆、TOEFL 词库、不择手段背单词 GRE 联想；命中内置词条时无需联网；
+- 内置未收录时使用开放词典 dictionaryapi.dev；
 - 支持接入你自己的**牛津词典 API**：在设置中填写 App ID / App Key，即可优先显示牛津释义；牛津是商业 API，Lumen 不内置、也不代申请；
 - 免费翻译通道（Google / MyMemory）开箱即用，不需要 API Key；
 - 翻译失败、断网、免费额度耗尽都有清晰降级，不打断阅读；
@@ -115,7 +117,7 @@ npm start
 build.bat
 ```
 
-产物在 `release/Lumen-1.1.0-portable.exe`（约 111 MB），双击即用，不需要安装。也可以直接运行 `release/win-unpacked/Lumen.exe`。
+产物在 `release/Lumen-1.2.0-portable.exe`（约 131 MB），双击即用，不需要安装。也可以直接运行 `release/win-unpacked/Lumen.exe`。
 
 > 便携版未购买代码签名证书，Windows SmartScreen 可能提示“未知发布者”；选择“仍要运行”即可。
 
@@ -134,6 +136,18 @@ API Key 使用 Windows `safeStorage`（DPAPI）加密后保存在本机，只用
 
 > 不配置 AI 也能使用全部阅读、翻译、生词和复习功能。AI 只影响“语境解析”这一层。
 
+## 内置词库
+
+Lumen 1.2 起内置约 **90,352** 个合并词条：
+
+| 来源 | 内容 |
+| --- | --- |
+| cigen_en_new | 词根记忆、中英释义、例句 |
+| TOEFL | 音标、中英释义、例句、同义、短语、词族 |
+| 不择手段背单词 | GRE 词源、联想记忆 |
+
+数据按首字母拆成 26 个 gzip 分片，按需加载，离线可用。词表由用户提供；公开发布安装包前请自行确认这三份数据的再分发授权。源文件变化后可在项目根目录运行 `node scripts/build-dictionaries.js` 重新生成。
+
 ## 配置牛津词典（可选）
 
 设置 → 词典 → 选择「牛津 API」，填写：
@@ -141,7 +155,7 @@ API Key 使用 Windows `safeStorage`（DPAPI）加密后保存在本机，只用
 - **App ID**：牛津开发者控制台提供；
 - **App Key**：与 App ID 配套，使用系统 DPAPI 加密保存在本机。
 
-牛津词典是商业授权数据，需要你自己在 Oxford Dictionaries 官网申请 API 凭证；Lumen 不内置牛津数据、也不代申请。没有凭证时自动使用免费开放词典；牛津请求失败时会回退开放词典，并在卡片上标注来源。
+牛津词典是商业授权数据，需要你自己在 Oxford Dictionaries 官网申请 API 凭证；Lumen 不内置牛津数据、也不代申请。没有凭证时优先使用内置词库，未收录再使用免费开放词典；牛津请求失败时会回退内置/开放词典，并在卡片上标注来源。
 
 ## 记忆曲线说明
 
@@ -211,8 +225,8 @@ docs/              接口契约、产品分析、截图
 ## 测试
 
 ```bash
-npm test               # 111 个核心服务单元测试
-npm run selftest       # 28 项 Electron 端到端检查（本地 mock AI）
+npm test               # 116 个核心服务单元测试
+npm run selftest       # 29 项 Electron 端到端检查（本地 mock AI）
 npm run screenshots    # 真实 Electron 渲染 + 产品截图
 ```
 

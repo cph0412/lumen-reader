@@ -491,18 +491,37 @@ function dictChipRow(label, values, max) {
 
 function dictionarySectionHtml(L) {
   const dictionary = L.result && L.result.dictionary;
-  if (!dictionary || !Array.isArray(dictionary.meanings) || !dictionary.meanings.length) return '';
-  const source = dictionary.sourceLabel || (dictionary.source === 'oxford' ? '牛津词典' : (dictionary.source === 'free' ? '开放词典' : '词典'));
-  const items = dictionary.meanings.slice(0, 5).map((meaning) => {
+  if (!dictionary) return '';
+  const meanings = Array.isArray(dictionary.meanings) ? dictionary.meanings : [];
+  const hasDetail = dictionary.note || dictionary.mnemonic || dictionary.roots ||
+    (Array.isArray(dictionary.phrases) && dictionary.phrases.length) ||
+    (Array.isArray(dictionary.examples) && dictionary.examples.length) ||
+    (Array.isArray(dictionary.synonyms) && dictionary.synonyms.length);
+  if (!meanings.length && !hasDetail) return '';
+  const source = dictionary.sourceLabel || (dictionary.source === 'oxford' ? '牛津词典' : (dictionary.source === 'free' ? '开放词典' : (dictionary.source === 'local' ? '内置词典' : '词典')));
+  const items = meanings.slice(0, 5).map((meaning) => {
     const syn = Array.isArray(meaning.synonyms) ? meaning.synonyms : [];
     const ant = Array.isArray(meaning.antonyms) ? meaning.antonyms : [];
+    const zh = meaning.definitionZh || '';
+    const en = meaning.definition || '';
     return '<div class="dict-item"><span class="dict-pos">' + esc(meaning.partOfSpeech || 'def') + '</span>' +
-      '<div class="dict-item-body"><div class="dict-text">' + esc(meaning.definition || '') + '</div>' +
+      '<div class="dict-item-body"><div class="dict-text">' + esc(zh || en) + '</div>' +
+      (zh && en && zh !== en ? '<div class="dict-def-en">' + esc(en) + '</div>' : '') +
       (meaning.example ? '<div class="dict-example">“' + esc(meaning.example) + '”</div>' : '') +
       (syn.length ? dictChipRow('近义', syn, 4) : '') +
       (ant.length ? dictChipRow('反义', ant, 4) : '') +
       '</div></div>';
   }).join('');
+  const examples = Array.isArray(dictionary.examples) && dictionary.examples.length
+    ? '<div class="dict-example-list">' + dictionary.examples.slice(0, 2).map((example) =>
+      '<div class="dict-example-row"><div class="en">' + esc(example.en || '') + '</div>' +
+      (example.zh ? '<div class="zh">' + esc(example.zh) + '</div>' : '') + '</div>').join('') + '</div>'
+    : '';
+  const phrases = Array.isArray(dictionary.phrases) && dictionary.phrases.length
+    ? '<div class="dict-phrases"><span class="dict-relations-label">短语</span>' +
+      dictionary.phrases.slice(0, 5).map((phrase) =>
+        '<span class="dict-phrase"><b>' + esc(phrase.en || '') + '</b>' + (phrase.zh ? '<span>' + esc(phrase.zh) + '</span>' : '') + '</span>').join('') + '</div>'
+    : '';
   const forms = Array.isArray(dictionary.forms) && dictionary.forms.length
     ? '<div class="dict-relations"><span class="dict-relations-label">词形</span>' +
       dictionary.forms.slice(0, 6).map((form) => '<span class="dict-relation">' + esc(typeof form === 'string' ? form : form.form || '') + '</span>').join('') + '</div>'
@@ -510,13 +529,24 @@ function dictionarySectionHtml(L) {
   const origin = dictionary.origin
     ? '<div class="dict-origin"><span>词源</span><p>' + esc(dictionary.origin) + '</p></div>'
     : '';
+  const roots = dictionary.roots
+    ? '<div class="dict-memory"><span>词根 / 词源</span><p>' + esc(dictionary.roots) + '</p></div>'
+    : '';
+  const mnemonic = dictionary.mnemonic
+    ? '<div class="dict-memory dict-memory--mnemonic"><span>联想记忆</span><p>' + esc(dictionary.mnemonic) + '</p></div>'
+    : '';
+  const note = dictionary.note
+    ? '<div class="dict-note-block"><button type="button" class="dict-note-toggle" data-act="dict-note-toggle" aria-expanded="' + Boolean(L.dictNoteOpen) + '">' +
+        '<span>更多词根 / 记忆</span><span>' + (L.dictNoteOpen ? '收起' : '展开') + '</span></button>' +
+        (L.dictNoteOpen ? '<pre class="dict-note">' + esc(dictionary.note) + '</pre>' : '') + '</div>'
+    : '';
   return '<section class="lookup-section lookup-section--dictionary">' +
     '<div class="lookup-label lookup-label--row">' + icons.book(12) + '词典释义' +
       '<span class="dict-source">' + esc(source) + '</span></div>' +
-    '<div class="dict-list">' + items + '</div>' + forms +
+    '<div class="dict-list">' + items + '</div>' + examples + phrases + forms +
     dictChipRow('近义', dictionary.synonyms, 8) +
     dictChipRow('反义', dictionary.antonyms, 8) +
-    origin + '</section>';
+    roots + mnemonic + note + origin + '</section>';
 }
 
 function lexiconSectionHtml(L) {
@@ -1092,6 +1122,7 @@ async function openLookup(st, options) {
     noteColor: 'amber',
     selectionExpanded: false,
     lexiconOpen: false,
+    dictNoteOpen: false,
     autoSave: Boolean(options.autoSave)
   };
   st.lookup = lookup;
@@ -1864,6 +1895,11 @@ function onRootClick(st, event) {
       'lexicon-toggle': () => {
         if (!st.lookup) return;
         st.lookup.lexiconOpen = !st.lookup.lexiconOpen;
+        renderLookup(st);
+      },
+      'dict-note-toggle': () => {
+        if (!st.lookup) return;
+        st.lookup.dictNoteOpen = !st.lookup.dictNoteOpen;
         renderLookup(st);
       },
       'lookup-save': () => saveLookupWord(st),
