@@ -96,10 +96,15 @@ function registerIpc({ dataDir, library, settings, translator, dictionary, lexic
 
   handle('library:import-files', async () => {
     const result = await dialog.showOpenDialog(windows.mainWindow, {
-      title: '导入英文 TXT',
+      title: '导入英文电子书',
       buttonLabel: '导入',
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: '文本文件', extensions: ['txt'] }]
+      filters: [
+        { name: '电子书 / 文本', extensions: ['txt', 'epub', 'mobi', 'azw'] },
+        { name: '文本文件', extensions: ['txt', 'text', 'md'] },
+        { name: 'EPUB 电子书', extensions: ['epub'] },
+        { name: 'MOBI 电子书', extensions: ['mobi', 'azw', 'prc'] }
+      ]
     });
     if (result.canceled || !result.filePaths.length) {
       return { imported: [], canceled: true, errors: [] };

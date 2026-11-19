@@ -46,11 +46,13 @@ Lumen 把一次划词拆成三层：**先翻译（通常 1–3 秒）→ 再看�
 ## 功能
 
 ### 阅读
-- 导入 UTF-8 / GB18030 / UTF-16 TXT，自动识别编码，原文件不动；
+- 导入 TXT / EPUB / MOBI：TXT 自动识别 UTF-8 / GB18030 / UTF-16 编码；EPUB 2/3 按 OPF spine 解析章节；MOBI / 旧版 AZW 解析 PalmDB + PalmDOC 正文；原文件不动；
 - 自动识别 Chapter / PART / Letter / 罗马数字章节，生成目录；
 - 暖纸 / 暖褐 / 暗夜三套主题，字号、行高、版心、字距、衬线/无衬线、两端对齐均可调；
 - 沉浸式阅读器：章节导航、阅读进度、书签、书内搜索、专注模式；
-- 自动保存进度与阅读时长，下次从停下的地方继续。
+- 自动保存进度与阅读时长，下次从停下的地方继续；
+- EPUB / MOBI 正文抽取支持标题/段落/列表，章节自动编号；插图暂不渲染；
+- MOBI 支持 PalmDOC 压缩、旧版 AZW / PRC；KF8 / AZW3 请先转换为 EPUB，带 DRM 的书无法打开。
 
 ### 划词翻译与词典
 - 选中单词/句子，浮卡自动出现；单词给音标、真人发音（Windows TTS）；
@@ -117,7 +119,7 @@ npm start
 build.bat
 ```
 
-产物在 `release/Lumen-1.2.0-portable.exe`（约 131 MB），双击即用，不需要安装。也可以直接运行 `release/win-unpacked/Lumen.exe`。
+产物在 `release/Lumen-1.4.1-portable.exe`（约 131 MB），双击即用，不需要安装。也可以直接运行 `release/win-unpacked/Lumen.exe`。
 
 > 便携版未购买代码签名证书，Windows SmartScreen 可能提示“未知发布者”；选择“仍要运行”即可。
 
@@ -225,7 +227,7 @@ docs/              接口契约、产品分析、截图
 ## 测试
 
 ```bash
-npm test               # 116 个核心服务单元测试
+npm test               # 125 个核心服务单元测试
 npm run selftest       # 29 项 Electron 端到端检查（本地 mock AI）
 npm run screenshots    # 真实 Electron 渲染 + 产品截图
 ```
@@ -238,7 +240,9 @@ AI 联想、艾宾浩斯排程、收藏生词、复习曲线、词典设置、�
 
 ## 已知限制
 
-- 当前只支持 TXT；EPUB / PDF / 网页文章在路线图中；
+- 支持 TXT / EPUB / MOBI / 旧版 AZW；PDF / 网页文章在路线图中；
+- EPUB / MOBI 仅读取文字，插图与复杂版式不渲染；带 DRM 的书无法导入；
+- MOBI 暂不支持 HUFF/CDIC 压缩与 KF8 / AZW3；遇到时请先用 Calibre 转换为 EPUB；
 - 全局划词依赖 Windows 前台窗口与剪贴板，极少数全屏游戏/受保护应用可能无法捕获；
 - 免费翻译需要联网，Google 在部分网络不可用时自动降级 MyMemory，单词/短句约 2–5 秒，长段落按句分块翻译约 5–9 秒；
 - AI 解析需要你自己配置 Base URL / Key（本地 Ollama 可免 Key），软件不内置公共模型额度；
@@ -250,7 +254,7 @@ AI 联想、艾宾浩斯排程、收藏生词、复习曲线、词典设置、�
 
 完整竞品拆解与功能优先级见 [docs/feature-analysis.md](docs/feature-analysis.md)。我们最想做的三件事：
 
-1. **EPUB / 网页文章导入**：让“读什么”不再受 TXT 限制；
+1. **PDF / 网页文章导入**：继续扩展“读什么”的边界，并补齐 EPUB 插图/复杂版式；
 2. **段落级双语对照 + 整章精读**：从“查一个词”升级为“读懂一章”；
 3. **FSRS + Anki 导出 + 跨设备同步**：让生词真正进入长期记忆。
 

@@ -8,6 +8,8 @@ const TOC_GAP_CHARS = 260;     // 目录行之间字符间距很小
 const TOC_LINE_GAP = 2;        // 目录行相邻（允许标题另起一行的情形）
 const TOC_RUN_MIN = 3;         // 连续 3 条以上视为目录块
 const SECTION_WORDS = 4500;    // 无章节时每节目标词数
+// EPUB / MOBI 转换时写入的显式章节标记，避免正文中的标题行被误判。
+const CHAPTER_MARKER = '\u0001LUMEN_CHAPTER\u0001';
 
 const NUMBER_WORDS = 'one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|' +
   'thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|' +
@@ -254,9 +256,37 @@ function guessTitle(text) {
   return undefined;
 }
 
+function parseMarkedChapters(source) {
+  const lines = splitLines(source);
+  const marks = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const trimmed = line.raw.trim();
+    if (trimmed.indexOf(CHAPTER_MARKER) !== 0) continue;
+    marks.push({ line: line, title: trimmed.slice(CHAPTER_MARKER.length).trim() });
+  }
+  const chapters = [];
+  for (let i = 0; i < marks.length; i += 1) {
+    const item = marks[i];
+    const nextLine = lines[item.line.index + 1];
+    const start = nextLine ? nextLine.start : source.length;
+    const end = i + 1 < marks.length ? marks[i + 1].line.start : source.length;
+    if (end <= start) continue;
+    chapters.push({
+      index: chapters.length,
+      title: item.title || 'Chapter ' + (chapters.length + 1),
+      start: start,
+      end: trimRangeEnd(source, start, end),
+      wordCount: countWords(source.slice(start, end)),
+    });
+  }
+  return { chapters: chapters, title: undefined };
+}
+
 function parseChapters(text) {
   const source = typeof text === 'string' ? text : String(text || '');
   if (!source.trim()) return { chapters: [], title: undefined };
+  if (source.indexOf(CHAPTER_MARKER) !== -1) return parseMarkedChapters(source);
 
   let candidates = collectCandidates(source);
   candidates = dropTocClusters(candidates);
@@ -327,4 +357,4 @@ function parseChapters(text) {
   };
 }
 
-module.exports = { parseChapters, countWords, matchHeading, guessTitle };
+module.exports = { parseChapters, countWords, matchHeading, guessTitle, CHAPTER_MARKER };

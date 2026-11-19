@@ -1,6 +1,6 @@
 # Lumen Reader · 验收报告
 
-日期：2026-11-03  
+日期：2026-11-19
 环境：Windows 10.0.26200 / Electron 45.1.0 / Node 22.19.0  
 构建：Electron 无边框窗口，1440×900 截图；Windows 便携版
 
@@ -8,17 +8,20 @@
 
 ### 单元测试
 
+
 ```bash
 npm test
 ```
 
-结果：**116 passed / 0 failed**（node:test，约 0.6s）
+结果：**125 passed / 0 failed**（node:test，约 0.9s）
 
 覆盖：
 - 编码识别：UTF-8、UTF-8 BOM、UTF-16LE/BE、GB18030 回退、乱码比例
 - 章节解析：Chapter / CHAPTER I / PART / 第X章 / Letter / 全大写 / 罗马数字 / 无章节分节
 - 原子 JSON 存储与损坏恢复
 - 书库导入、示例播种、进度、书签、搜索、旧版 0–1 进度迁移
+- EPUB：ZIP 解包、OPF/container、spine 章节、XHTML 标题/段落/实体、单文件多 h1 切分、导入后复用阅读器
+- MOBI：PalmDB、PalmDOC 压缩 1/2、pagebreak 章节、标题、导入后复用阅读器
 - 翻译 Google→MyMemory 降级、HTML 实体、缓存、AI JSON 容错、本地模型无 Key
 - 生词 CRUD、normalized 去重、四档 SRS、due 排序、CSV 导出
 - 统计 streak / weekly / heatmap / 补录日期、笔记 CRUD
@@ -94,19 +97,40 @@ npx electron-builder --win portable --x64
 ```
 
 产物：
-- `release/Lumen-1.2.0-portable.exe`（130,600,112 bytes，已写入 Lumen 图标与版本信息）
+- `release/Lumen-1.4.1-portable.exe`（130,605,136 bytes，已写入 Lumen 图标与版本信息）
 - `release/win-unpacked/Lumen.exe`
 
 启动验证：便携版进程启动，主窗口标题为“书库 · Lumen 流明阅读”；打包版 `--selftest` 29/29 通过。
 
-## 4. 1.2 内置词库
+## 4. 1.4 MOBI 阅读
+
+- 新增 `src/main/util/mobi.js`：PalmDB 记录表、MOBI/PalmDOC 头、PalmDOC 1/2 解压、pagebreak 章节、HTML 正文抽取。
+- 支持 .mobi / 旧版 .azw / .prc；解析标题、作者、章节；导入后复用现有阅读器。
+- 明确拒绝 DRM、KF8/AZW3、HUFF/CDIC 压缩，并提示用 Calibre 转为 EPUB。
+- 限制：插图与复杂排版不渲染，只读取文字；单文件上限 120 MB。
+
+### 1.4.1 EPUB 兼容修复
+
+- 修复使用 `opf:package` / `opf:manifest` / `opf:spine` 命名空间前缀的 EPUB（此前 manifest/spine 解析为空）。
+- 中文正文改用 CJK 字符计数，短章节不再因“无空格”而被误判为不足 20 词。
+- EPUB/MOBI 转换使用显式章节标记，避免正文重复标题导致章节翻倍；国富论实测 52 章。
+- 新增 OPF 命名空间回归测试，总单元测试 125 项。
+
+## 5. 1.3 EPUB 阅读
+
+- 新增 `src/main/util/epub.js`：最小 ZIP 解包 + `META-INF/container.xml` + OPF manifest/spine + XHTML 正文抽取。
+- 支持 EPUB 2/3 的多 XHTML 章节、单文件多 h1 切分、HTML 实体/脚本/样式清理；导入后仍复用现有章节、进度、书签、搜索与划词功能。
+- 导入对话框、拖拽提示与书库卡片均加入 EPUB；单文件上限 120 MB；DRM/加密 EPUB 会给出明确错误。
+- 限制：插图与复杂排版不渲染，只读取文字。
+
+## 6. 1.2 内置词库
 
 - 合并 **cigen（88,167） + TOEFL（9,213） + 不择手段背单词（7,451）**，去重后 **90,352** 个词条。
 - 预生成 26 个按首字母拆分的 gzip JSONL 分片，运行时按需加载，离线可用；TOEFL 结构化释义优先，cigen/Bu_Ze 补充词根、短语与联想。
 - 划词卡新增中文释义、短语、词根/词源、联想记忆与可展开的详细记忆；来源标注为「内置词典」。
 - 牛津 API 显式选择时优先牛津；自动/免费模式优先内置，未收录时再联网。
 
-## 5. 1.1 新增能力
+## 7. 1.1 新增能力
 
 - **增强词典**：开放词典返回音标、词性、释义、例句、同反义、词形、词源；可选牛津 API，无凭证/失败自动回退开放词典并标注来源。
 - **艾宾浩斯记忆曲线**：11 阶段间隔（5 分钟至 120 天），复习页曲线、阶段与四档实际间隔；旧数据自动迁移。
@@ -121,16 +145,18 @@ npx electron-builder --win portable --x64
 - **主界面进度不同步**：书库页挂载时强制读取最新 `library.list()`；阅读进度百分比统一为 0–100，旧版 0–1 数据在启动时自动迁移；已读完的书再次阅读时按真实进度显示，不被 `finished` 状态强行覆盖为 100%。
 - **段落翻译误报网络错误**：MyMemory 单次查询有约 500 字节上限。长段落现在按句子切块（≤420 字符）分别翻译后拼接，Google 失败时也不会整段报错。
 
-## 6. 已知边界
+## 8. 已知边界
 
 - 未做代码签名，SmartScreen 可能提示未知发布者；
 - 全局划词依赖前台窗口/剪贴板，受保护应用可能失败；
 - 免费翻译依赖公网，首次查询有 2–4s 延迟；
 - AI 需要用户自备接口，默认不内置公共额度；
-- 仅 TXT，EPUB/PDF/OCR 在路线图中；
+- 支持 TXT / EPUB / MOBI / 旧版 AZW；PDF / OCR 在路线图中；
+- EPUB / MOBI 只读取文字，插图、脚注弹窗与复杂排版不渲染；带 DRM 的书无法导入；
+- MOBI 暂不支持 HUFF/CDIC 压缩与 KF8 / AZW3；
 - 牛津词典需要用户自己的 API 凭证；无凭证时用免费开放词典。
 
-## 7. 复现命令
+## 9. 复现命令
 
 ```bash
 npm install

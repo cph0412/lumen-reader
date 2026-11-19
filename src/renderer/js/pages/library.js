@@ -163,10 +163,10 @@ function welcomeHtml() {
     '<h2 class="hero-title">把每一页，<br><em>读成自己的语言。</em></h2>' +
     '<p class="hero-sub">导入一本英文原著。选中词语或句子的瞬间，中文翻译、词典释义与 AI 语境解析就会浮现；一键收藏成生词，让偶遇变成真正的掌握。</p>' +
     '<div class="hero-actions">' +
-    '<button type="button" class="btn primary" data-act="import">' + icons.plus(16) + ' 导入第一本 TXT</button>' +
+    '<button type="button" class="btn primary" data-act="import">' + icons.plus(16) + ' 导入第一本书</button>' +
     '<button type="button" class="btn" data-act="samples">' + icons.bookOpen(16) + ' 加载示例书</button>' +
     '</div>' +
-    '<div class="hero-note">' + icons.info(14) + ' 支持拖拽 .txt 文件到窗口任意位置</div>' +
+    '<div class="hero-note">' + icons.info(14) + ' 支持拖拽 .txt / .epub / .mobi 到窗口任意位置</div>' +
     '</div>' +
     '<div class="hero-art" aria-hidden="true">' +
     '<div class="art-card"></div><div class="art-card"></div>' +
@@ -201,7 +201,7 @@ function pageHtml(st) {
     '<input type="search" id="library-search" class="input" placeholder="搜索书名或作者" autocomplete="off" spellcheck="false" aria-label="搜索书名或作者" value="' + escapeHtml(st.query) + '" />' +
     '<kbd class="kbd">Ctrl K</kbd>' +
     '</label>' +
-    '<button type="button" class="btn primary import-btn" data-act="import">' + icons.plus(16) + ' 导入 TXT</button>' +
+    '<button type="button" class="btn primary import-btn" data-act="import">' + icons.plus(16) + ' 导入 TXT / EPUB / MOBI</button>' +
     '</div>' +
     '</header>' +
     '<section id="library-hero">' + heroHtml(st) + '</section>' +
@@ -216,8 +216,8 @@ function pageHtml(st) {
     '<div class="drop-inner">' +
     '<span class="drop-icon">' + icons.upload(26) + '</span>' +
     '<h3>松手即可导入</h3>' +
-    '<p>英文原著 TXT 会被复制到 Lumen 书库，原文件不会移动。</p>' +
-    '<div class="drop-formats"><span class="chip static">.txt</span><span class="chip static">UTF-8</span><span class="chip static">UTF-16</span><span class="chip static">GB18030</span></div>' +
+    '<p>英文原著 TXT / EPUB / MOBI 会被解析并保存到 Lumen 书库，原文件不会移动。</p>' +
+    '<div class="drop-formats"><span class="chip static">.txt</span><span class="chip static">.epub</span><span class="chip static">.mobi</span><span class="chip static">UTF-8</span><span class="chip static">UTF-16</span><span class="chip static">GB18030</span></div>' +
     '</div>' +
     '</div>' +
     '</div>';
@@ -258,7 +258,7 @@ function bookCardHtml(st, book) {
     coverHtml(book, { more: true }) +
     '<div class="book-info">' +
     '<h3 class="book-title">' + escapeHtml(book.title || '未命名') + '</h3>' +
-    '<div class="book-author">' + escapeHtml(authorOf(book)) + '</div>' +
+    '<div class="book-author">' + escapeHtml(authorOf(book)) + (book.format === 'epub' ? ' · EPUB' : book.format === 'mobi' ? ' · MOBI' : '') + '</div>' +
     '<div class="book-meter"><div class="progress"><i style="width:' + percent + '%"></i></div>' +
     '<span class="pct">' + (percent > 0 ? Math.round(percent) + '%' : '—') + '</span></div>' +
     '<div class="book-foot"><span class="status ' + statusClass + '"><i></i>' + statusLabel(status) + '</span>' +
@@ -274,7 +274,7 @@ function emptyShelfHtml(st) {
       '<h3>书架还空着</h3>' +
       '<p>导入一本英文原著，或先加载示例书。支持拖拽文件到窗口任意位置，Lumen 会妥善保存编码与章节。</p>' +
       '<div class="empty-actions">' +
-      '<button type="button" class="btn primary" data-act="import">' + icons.plus(16) + ' 导入第一本 TXT</button>' +
+      '<button type="button" class="btn primary" data-act="import">' + icons.plus(16) + ' 导入第一本书</button>' +
       '<button type="button" class="btn" data-act="samples">' + icons.bookOpen(16) + ' 加载示例书</button>' +
       '</div>' +
       '<p class="muted" style="margin-top:14px;font-size:11px">' + SAMPLE_HINT + '</p>' +
@@ -465,7 +465,7 @@ async function importBooks(st) {
     const errors = Array.isArray(result.errors) ? result.errors : [];
     if (imported.length) st.ctx.toast('已导入 ' + imported.length + ' 本书', 'ok');
     if (errors.length) st.ctx.toast(errors.length + ' 个文件未能导入：' + errors[0], 'warn', { duration: 6200 });
-    if (!imported.length && !errors.length) st.ctx.toast('没有找到可导入的 TXT 文件', 'warn');
+    if (!imported.length && !errors.length) st.ctx.toast('没有找到可导入的 TXT / EPUB / MOBI 文件', 'warn');
     if (imported.length) await reloadBooks(st);
   } catch (error) {
     st.ctx.toast(friendlyError(error, '导入失败'), 'error');
@@ -533,8 +533,8 @@ function showDrop(st, on, importing = false) {
     inner.innerHTML = '<span class="drop-icon"><span class="spinner lg"></span></span><h3>正在导入…</h3><p>正在复制并解析章节，请稍候。</p>';
   } else if (inner && on) {
     inner.innerHTML = '<span class="drop-icon">' + icons.upload(26) + '</span>' +
-      '<h3>松手即可导入</h3><p>英文原著 TXT 会被复制到 Lumen 书库，原文件不会移动。</p>' +
-      '<div class="drop-formats"><span class="chip static">.txt</span><span class="chip static">UTF-8</span><span class="chip static">UTF-16</span><span class="chip static">GB18030</span></div>';
+      '<h3>松手即可导入</h3><p>英文原著 TXT / EPUB / MOBI 会被解析并保存到 Lumen 书库，原文件不会移动。</p>' +
+      '<div class="drop-formats"><span class="chip static">.txt</span><span class="chip static">.epub</span><span class="chip static">.mobi</span><span class="chip static">UTF-8</span><span class="chip static">UTF-16</span><span class="chip static">GB18030</span></div>';
   }
   st.dragging = Boolean(on);
 }

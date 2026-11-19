@@ -10,10 +10,15 @@ const crypto = require('node:crypto');
 
 const { detectAndDecode } = require('../util/encoding');
 const { parseChapters, countWords, guessTitle } = require('../util/chapters');
+const { parseEpub } = require('../util/epub');
+const { parseMobi } = require('../util/mobi');
 const { createJsonStore, writeFileAtomic } = require('./store');
 
 const TEXT_EXTENSIONS = new Set(['.txt', '.text', '.md']);
+const EPUB_EXTENSION = '.epub';
+const MOBI_EXTENSIONS = new Set(['.mobi', '.azw', '.prc']);
 const MAX_IMPORT_BYTES = 40 * 1024 * 1024;
+const MAX_EBOOK_BYTES = 120 * 1024 * 1024;
 const MAX_SEARCH_RESULTS = 60;
 const CACHE_LIMIT = 4;
 const BOOK_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -190,6 +195,7 @@ function createLibraryService(options) {
       description: input.description || '',
       fileName: input.fileName || '',
       source: input.source === 'sample' ? 'sample' : 'imported',
+      format: input.format === 'epub' || input.format === 'mobi' ? input.format : 'txt',
       encoding: input.encoding || 'utf-8',
       language: 'en',
       sizeBytes: input.sizeBytes || Buffer.byteLength(input.text, 'utf8'),
@@ -342,19 +348,50 @@ function createLibraryService(options) {
     } catch (err) {
       throw fail('INVALID_FILE', '文件不存在或无法访问');
     }
-    if (!stat.isFile()) throw fail('INVALID_FILE', '仅支持单个文本文件');
-    if (stat.size > MAX_IMPORT_BYTES) throw fail('INVALID_FILE', '文件过大（上限 40 MB）');
+    if (!stat.isFile()) throw fail('INVALID_FILE', '仅支持单个文件');
     const ext = path.extname(abs).toLowerCase();
-    if (!TEXT_EXTENSIONS.has(ext)) throw fail('INVALID_FILE', '仅支持 .txt / .md 文本文件');
+    const isEpub = ext === EPUB_EXTENSION;
+    const isMobi = MOBI_EXTENSIONS.has(ext);
+    if (!TEXT_EXTENSIONS.has(ext) && !isEpub && !isMobi) {
+      throw fail('INVALID_FILE', '仅支持 .txt / .md / .epub / .mobi / .azw 文件');
+    }
+    if (stat.size > (isEpub || isMobi ? MAX_EBOOK_BYTES : MAX_IMPORT_BYTES)) {
+      throw fail('INVALID_FILE', '文件过大（上限 ' + (isEpub || isMobi ? '120' : '40') + ' MB）');
+    }
 
     const buffer = fs.readFileSync(abs);
-    const decoded = detectAndDecode(buffer);
-    const text = cleanText(decoded.text);
-    if (countWords(text) < 20) throw fail('INVALID_FILE', '文件内容为空或过短');
+    let text;
+    let encoding = 'utf-8';
+    let meta;
+    let format = 'txt';
+    if (isEpub) {
+      const epub = parseEpub(buffer);
+      text = cleanText(epub.text);
+      if (countWords(text) < 20) throw fail('INVALID_FILE', 'EPUB 正文为空或过短');
+      meta = {
+        title: epub.title || path.basename(abs, path.extname(abs)),
+        author: epub.author,
+      };
+      format = 'epub';
+    } else if (isMobi) {
+      const mobi = parseMobi(buffer);
+      text = cleanText(mobi.text);
+      if (countWords(text) < 20) throw fail('INVALID_FILE', 'MOBI 正文为空或过短');
+      meta = {
+        title: mobi.title || path.basename(abs, path.extname(abs)),
+        author: mobi.author,
+      };
+      format = 'mobi';
+    } else {
+      const decoded = detectAndDecode(buffer);
+      text = cleanText(decoded.text);
+      if (countWords(text) < 20) throw fail('INVALID_FILE', '文件内容为空或过短');
+      meta = extractMeta(text, path.basename(abs));
+      encoding = decoded.encoding;
+    }
 
     const id = randomId('bk');
     const fileName = path.basename(abs);
-    const meta = extractMeta(text, fileName);
     const built = buildBook({
       id: id,
       text: text,
@@ -362,7 +399,8 @@ function createLibraryService(options) {
       author: meta.author,
       fileName: fileName,
       source: 'imported',
-      encoding: decoded.encoding,
+      format: format,
+      encoding: encoding,
       sizeBytes: buffer.length,
     });
     writeFileAtomic(bookPath(id), text);
